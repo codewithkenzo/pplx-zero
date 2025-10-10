@@ -1,0 +1,102 @@
+{
+  "name": "perplexity-search",
+  "version": "1.0.0",
+  "description": "Production-ready Perplexity AI search tool for OpenCode",
+  "runtime": "bun",
+  "entrypoint": "./dist/cli.js",
+  "schemas": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["single", "multi"],
+          "description": "Search mode: single query or multiple queries"
+        },
+        "query": {
+          "type": "string",
+          "description": "Single search query (required in single mode)"
+        },
+        "queries": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of search queries (required in multi mode)"
+        },
+        "maxResults": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5,
+          "description": "Maximum results per query"
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO country code for location-based search"
+        },
+        "concurrency": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "description": "Concurrent query limit for multi-mode"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 1000,
+          "maximum": 300000,
+          "default": 30000,
+          "description": "Request timeout in milliseconds"
+        }
+      },
+      "required": ["mode"]
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean" },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "query": { "type": "string" },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": { "type": "string" },
+                    "url": { "type": "string", "format": "uri" },
+                    "snippet": { "type": "string" },
+                    "date": { "type": "string" }
+                  },
+                  "required": ["title", "url"]
+                }
+              }
+            }
+          }
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "message": { "type": "string" },
+            "details": { "type": "object" }
+          }
+        }
+      }
+    }
+  },
+  "environment": {
+    "required": ["PERPLEXITY_API_KEY"],
+    "optional": ["PERPLEXITY_AI_API_KEY"]
+  },
+  "capabilities": [
+    "single-query-search",
+    "multi-query-search",
+    "concurrent-execution",
+    "error-recovery",
+    "streaming-output"
+  ]
+}

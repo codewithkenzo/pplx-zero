@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "requests": [
+    {
+      "op": "search",
+      "args": {
+        "query": "Node.js performance optimization tips",
+        "maxResults": 3
+      }
+    },
+    {
+      "op": "search", 
+      "args": {
+        "query": "Docker container security best practices",
+        "maxResults": 3,
+        "country": "US"
+      }
+    },
+    {
+      "op": "search",
+      "args": {
+        "query": "GraphQL vs REST API comparison 2024",
+        "maxResults": 3
+      }
+    }
+  ],
+  "options": {
+    "concurrency": 2,
+    "timeoutMs": 20000
+  }
+}
