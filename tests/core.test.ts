@@ -24,7 +24,7 @@ const mockSearch = {
 const mockPerplexity = mock(() => mockSearch);
 
 // Mock the module
-const originalModule = await import("@perplexity-ai/perplexity_ai");
+const originalModule = await import("perplexityai");
 const originalDefault = originalModule.default;
 
 beforeEach(() => {
@@ -32,7 +32,7 @@ beforeEach(() => {
   mockPerplexity.mockClear();
   // Replace the module import with our mock
   (global as any).__mocks__ = {
-    "@perplexity-ai/perplexity_ai": {
+    "perplexityai": {
       default: mockPerplexity,
     },
   };

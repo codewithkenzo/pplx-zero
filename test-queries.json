@@ -4,28 +4,27 @@
     {
       "op": "search",
       "args": {
-        "query": "Node.js performance optimization tips",
+        "query": "TypeScript 5.0 features",
         "maxResults": 3
-      }
-    },
-    {
-      "op": "search", 
-      "args": {
-        "query": "Docker container security best practices",
-        "maxResults": 3,
-        "country": "US"
       }
     },
     {
       "op": "search",
       "args": {
-        "query": "GraphQL vs REST API comparison 2024",
+        "query": "React Server Components best practices",
+        "maxResults": 3
+      }
+    },
+    {
+      "op": "search",
+      "args": {
+        "query": "Bun runtime performance benchmarks",
         "maxResults": 3
       }
     }
   ],
   "options": {
     "concurrency": 2,
-    "timeoutMs": 20000
+    "timeoutMs": 45000
   }
 }

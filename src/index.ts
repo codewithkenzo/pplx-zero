@@ -1,5 +1,5 @@
-import Perplexity from '@perplexity-ai/perplexity_ai';
 import { randomUUID } from 'node:crypto';
+import { search as perplexitySearch } from 'perplexityai';
 import { 
   SearchInputV1Schema,
   BatchSearchInputV1Schema,
@@ -18,7 +18,7 @@ import { ResilienceManager, DEFAULT_CONFIGS } from './util/resilience.js';
 import { Logger, MetricsCollector, createLogger } from './util/monitoring.js';
 
 export class PerplexitySearchTool {
-  private client: Perplexity;
+  private client: typeof perplexitySearch;
   private workspace: WorkspaceSandbox;
   private resilience: ResilienceManager;
   private logger: Logger;
@@ -37,7 +37,7 @@ export class PerplexitySearchTool {
       throw new Error('PERPLEXITY_API_KEY or PERPLEXITY_AI_API_KEY environment variable is required');
     }
     
-    this.client = new Perplexity({ apiKey });
+    this.client = perplexitySearch;
     this.workspace = new WorkspaceSandbox(workspacePath);
     
     // Initialize resilience patterns
@@ -233,18 +233,26 @@ export class PerplexitySearchTool {
 
   private async performSearch(query: SearchQuery, signal: AbortSignal): Promise<SearchResult[]> {
     try {
-      const search = await this.client.search.create({
-        query: query.query,
-        max_results: query.maxResults,
-        ...(query.country && { country: query.country }),
-      });
+      // The perplexityai package returns { concise, detailed, sources }
+      const searchResult = await this.client(query.query);
 
-      return search.results.map(result => ({
-        title: result.title,
-        url: result.url,
-        snippet: result.snippet,
-        date: result.date || undefined,
-      }));
+      // Transform the sources array to our SearchResult format
+      if (searchResult.sources && Array.isArray(searchResult.sources)) {
+        return searchResult.sources.map((source: any) => ({
+          title: source.name || 'Untitled',
+          url: source.url || '',
+          snippet: searchResult.detailed || searchResult.concise || '',
+          date: undefined, // perplexityai doesn't provide date info
+        }));
+      }
+
+      // If no sources, return a single result with the text content
+      return [{
+        title: 'Search Result',
+        url: 'https://www.perplexity.ai/',
+        snippet: searchResult.detailed || searchResult.concise || 'No content available',
+        date: undefined,
+      }];
     } catch (error) {
       // Transform API errors to our error format
       if (error instanceof Error && error.name === 'AbortError') {

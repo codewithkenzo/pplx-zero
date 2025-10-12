@@ -1,11 +1,11 @@
-import Perplexity from "@perplexity-ai/perplexity_ai";
+import { search as perplexitySearch } from 'perplexityai';
 import type { SearchConfig, QueryResult, ToolOutput, StreamingEvent } from "./types.js";
 import { PerplexitySearchError, ErrorCode } from "./types.js";
 import { PerplexitySearchTool } from "./index.js";
 import type { SearchResult } from "./schema.js";
 
 export class PerplexitySearchEngine {
-  private client: Perplexity;
+  private client: typeof perplexitySearch;
 
   constructor(private apiKey: string) {
     if (!apiKey) {
@@ -14,7 +14,7 @@ export class PerplexitySearchEngine {
         ErrorCode.API_KEY_MISSING
       );
     }
-    this.client = new Perplexity({ apiKey });
+    this.client = perplexitySearch;
   }
 
   private createStreamingEvent(type: StreamingEvent["type"], data: any): StreamingEvent {
@@ -45,7 +45,7 @@ export class PerplexitySearchEngine {
       }
 
       const search = await Promise.race([
-        this.client.search.create(searchParams),
+        this.client(searchParams.query),
         new Promise<never>((_, reject) => {
           if (signal.aborted) {
             reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
@@ -63,16 +63,33 @@ export class PerplexitySearchEngine {
         }),
       ]);
 
-      const results = (search as any).results.map((result: any) => ({
-        title: result.title,
-        url: result.url,
-        snippet: result.snippet,
-        date: result.date,
-      }));
+      // Transform the perplexityai package response to our format
+      let results: SearchResult[] = [];
+      
+      if (search.sources && Array.isArray(search.sources)) {
+        results = search.sources.map((source: any) => ({
+          title: source.name || 'Untitled',
+          url: source.url || '',
+          snippet: search.detailed || search.concise || '',
+          date: undefined,
+        }));
+      } else {
+        // If no sources, create a single result with the text content
+        results = [{
+          title: 'Search Result',
+          url: 'https://www.perplexity.ai/',
+          snippet: search.detailed || search.concise || 'No content available',
+          date: undefined,
+        }];
+      }
+
+      // Limit results to maxResults if specified
+      const maxResults = config.maxResults || 5;
+      const limitedResults = results.slice(0, maxResults);
 
       return {
         query,
-        results,
+        results: limitedResults,
       };
     } catch (error) {
       if (error instanceof PerplexitySearchError) {
