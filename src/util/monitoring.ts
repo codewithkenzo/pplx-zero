@@ -135,7 +135,7 @@ export class Logger {
     console.error(JSON.stringify(output));
   }
 
-  // Create OpenCode-compatible event
+  // Create structured event
   createEvent(level: EventV1['level'], event: string, data?: unknown): EventV1 {
     return {
       time: new Date().toISOString(),

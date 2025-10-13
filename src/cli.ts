@@ -30,7 +30,7 @@ const { values, positionals } = parseArgs({
 // Show help
 if (values.help) {
   console.error(`
-Perplexity Search Tool - OpenCode Integration
+Perplexity Search Tool
 
 USAGE:
   pplx [OPTIONS] [QUERY...]

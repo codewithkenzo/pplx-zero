@@ -294,9 +294,9 @@ For file-based input, use JSON format:
 }
 ```
 
-## OpenCode Integration
+## Tool Integration
 
-The tool includes a `.tool-contract.json` file defining the complete interface specification for OpenCode integration:
+The tool includes a `.tool-contract.json` file defining the complete interface specification:
 
 - **Input Schema**: Zod-validated configuration structure
 - **Output Schema**: Standardized response format with metadata

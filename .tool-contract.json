@@ -1,7 +1,7 @@
 {
   "name": "perplexity-search",
   "version": "1.0.0",
-  "description": "Production-ready Perplexity AI search tool for OpenCode",
+  "description": "Production-ready Perplexity AI search tool",
   "runtime": "bun",
   "entrypoint": "./dist/cli.js",
   "schemas": {
