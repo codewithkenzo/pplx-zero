@@ -10,7 +10,7 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
-PPLX-Zero is a blazing-fast, TypeScript implementation of Perplexity AI search integration. Built with Bun runtime for maximum performance and zero bloat.
+PPLX-Zero is a blazing-fast, zero-config TypeScript implementation of Perplexity AI search integration. Built with Bun runtime for maximum performance and zero bloat.
 
 ## Key Features
 
