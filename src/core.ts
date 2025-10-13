@@ -275,11 +275,11 @@ export class PerplexitySearchEngine {
     const executionTime = Date.now() - startTime;
 
     return {
+      mode: queryResults.length === 1 ? 'single' : 'multi',
       totalQueries: queryResults.length,
       totalResults,
       executionTime,
-      mode: queryResults.length === 1 ? 'single' : 'multi',
-    };
+    } as const;
   }
 
   private formatSearchError(error: unknown): {

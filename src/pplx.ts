@@ -390,4 +390,4 @@ if (import.meta.main) {
     });
 }
 
-export { WebScoutAgent, type { ScoutRequest, ScoutConfig, ScoutResult } };
+// Exports already handled by interface and class declarations above
