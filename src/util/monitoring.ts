@@ -6,13 +6,13 @@
 import type { EventV1 } from '../schema.js';
 
 export interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  message: string;
-  context?: Record<string, unknown>;
-  error?: Error;
-  duration?: number;
-  traceId?: string;
+  readonly timestamp: string;
+  readonly level: LogLevel;
+  readonly message: string;
+  readonly context?: Readonly<Record<string, unknown>>;
+  readonly error?: Error;
+  readonly duration?: number;
+  readonly traceId?: string;
 }
 
 export enum LogLevel {
@@ -24,66 +24,71 @@ export enum LogLevel {
 }
 
 export interface Metric {
-  name: string;
-  value: number;
-  unit: string;
-  tags?: Record<string, string>;
-  timestamp: number;
+  readonly name: string;
+  readonly value: number;
+  readonly unit: string;
+  readonly tags?: Readonly<Record<string, string>>;
+  readonly timestamp: number;
 }
 
 export interface PerformanceMetrics {
-  operation: string;
-  startTime: number;
-  endTime: number;
-  duration: number;
-  success: boolean;
-  metadata?: Record<string, unknown>;
+  readonly operation: string;
+  readonly startTime: number;
+  readonly endTime: number;
+  readonly duration: number;
+  readonly success: boolean;
+  readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
 export class Logger {
-  private level: LogLevel;
-  private context: Record<string, unknown>;
-  private traceId?: string;
+  private readonly minLevel: LogLevel;
+  private readonly context: Readonly<Record<string, unknown>>;
+  private readonly traceId?: string;
 
   constructor(
-    private minLevel: LogLevel = LogLevel.INFO,
-    context: Record<string, unknown> = {}
+    minLevel: LogLevel = LogLevel.INFO,
+    context: Readonly<Record<string, unknown>> = {},
+    traceId?: string
   ) {
-    this.level = minLevel;
+    this.minLevel = minLevel;
     this.context = context;
+    this.traceId = traceId;
   }
 
-  withContext(context: Record<string, unknown>): Logger {
+  withContext(additionalContext: Readonly<Record<string, unknown>>): Logger {
     return new Logger(
       this.minLevel,
-      { ...this.context, ...context }
+      { ...this.context, ...additionalContext },
+      this.traceId
     );
   }
 
-  withTraceId(traceId: string): Logger {
-    const logger = new Logger(this.minLevel, this.context);
-    logger.traceId = traceId;
-    return logger;
+  withTraceId(traceIdentifier: string): Logger {
+    return new Logger(this.minLevel, this.context, traceIdentifier);
   }
 
-  debug(message: string, context?: Record<string, unknown>): void {
-    this.log(LogLevel.DEBUG, message, context);
+  debug(logMessage: string, additionalContext?: Readonly<Record<string, unknown>>): void {
+    this.createLogEntry(LogLevel.DEBUG, logMessage, additionalContext);
   }
 
-  info(message: string, context?: Record<string, unknown>): void {
-    this.log(LogLevel.INFO, message, context);
+  info(logMessage: string, additionalContext?: Readonly<Record<string, unknown>>): void {
+    this.createLogEntry(LogLevel.INFO, logMessage, additionalContext);
   }
 
-  warn(message: string, context?: Record<string, unknown>): void {
-    this.log(LogLevel.WARN, message, context);
+  warn(logMessage: string, additionalContext?: Readonly<Record<string, unknown>>): void {
+    this.createLogEntry(LogLevel.WARN, logMessage, additionalContext);
   }
 
-  error(message: string, error?: Error, context?: Record<string, unknown>): void {
+  error(
+    logMessage: string,
+    error?: Error,
+    additionalContext?: Readonly<Record<string, unknown>>
+  ): void {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level: LogLevel.ERROR,
-      message,
-      context: { ...this.context, ...context },
+      message: logMessage,
+      context: this.mergeContexts(additionalContext),
       error,
       traceId: this.traceId,
     };
@@ -91,12 +96,16 @@ export class Logger {
     this.output(entry);
   }
 
-  fatal(message: string, error?: Error, context?: Record<string, unknown>): void {
+  fatal(
+    logMessage: string,
+    error?: Error,
+    additionalContext?: Readonly<Record<string, unknown>>
+  ): void {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level: LogLevel.FATAL,
-      message,
-      context: { ...this.context, ...context },
+      message: logMessage,
+      context: this.mergeContexts(additionalContext),
       error,
       traceId: this.traceId,
     };
@@ -104,118 +113,160 @@ export class Logger {
     this.output(entry);
   }
 
-  private log(level: LogLevel, message: string, context?: Record<string, unknown>): void {
-    if (level < this.level) return;
+  private createLogEntry(
+    logLevel: LogLevel,
+    logMessage: string,
+    additionalContext?: Readonly<Record<string, unknown>>
+  ): void {
+    if (logLevel < this.minLevel) return;
 
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
-      level,
-      message,
-      context: { ...this.context, ...context },
+      level: logLevel,
+      message: logMessage,
+      context: this.mergeContexts(additionalContext),
       traceId: this.traceId,
     };
 
     this.output(entry);
   }
 
+  private mergeContexts(
+    additionalContext?: Readonly<Record<string, unknown>>
+  ): Readonly<Record<string, unknown>> {
+    return additionalContext ? { ...this.context, ...additionalContext } : this.context;
+  }
+
   private output(entry: LogEntry): void {
-    const output = {
+    const formattedOutput = this.formatLogEntry(entry);
+    console.error(JSON.stringify(formattedOutput));
+  }
+
+  private formatLogEntry(entry: LogEntry): Record<string, unknown> {
+    return {
       ...entry,
       level: LogLevel[entry.level].toLowerCase(),
-      ...(entry.error && {
-        error: {
-          message: entry.error.message,
-          stack: entry.error.stack,
-          name: entry.error.name,
-        },
-      }),
+      ...(entry.error && this.formatError(entry.error)),
     };
+  }
 
-    // Output to stderr for structured logging
-    console.error(JSON.stringify(output));
+  private formatError(error: Error): Record<string, unknown> {
+    return {
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    };
   }
 
   // Create structured event
-  createEvent(level: EventV1['level'], event: string, data?: unknown): EventV1 {
+  createEvent(eventLevel: EventV1['level'], eventType: string, eventData?: unknown): EventV1 {
     return {
       time: new Date().toISOString(),
-      level,
-      event,
+      level: eventLevel,
+      event: eventType,
       id: this.traceId,
-      data,
+      data: eventData,
     };
   }
 
-  // Performance measurement
-  measure<T>(
-    operation: string,
-    fn: () => Promise<T>,
-    metadata?: Record<string, unknown>
-  ): Promise<{ result: T; metrics: PerformanceMetrics }> {
-    return this.measureSync(operation, fn, metadata);
-  }
-
-  async measureSync<T>(
-    operation: string,
-    fn: () => Promise<T>,
-    metadata?: Record<string, unknown>
+  // Performance measurement with high precision timing
+  async measure<T>(
+    operationName: string,
+    operationFunction: () => Promise<T>,
+    operationMetadata?: Readonly<Record<string, unknown>>
   ): Promise<{ result: T; metrics: PerformanceMetrics }> {
     const startTime = Date.now();
-    const startHrTime = process.hrtime.bigint();
+    const startHighResTime = process.hrtime.bigint();
 
     try {
-      const result = await fn();
-      const endTime = Date.now();
-      const endHrTime = process.hrtime.bigint();
-      const duration = endTime - startTime;
-      const precisionDuration = Number(endHrTime - startHrTime) / 1000000; // Convert to ms
-
-      const metrics: PerformanceMetrics = {
-        operation,
+      const result = await operationFunction();
+      const performanceMetrics = this.createSuccessfulMetrics(
+        operationName,
         startTime,
-        endTime,
-        duration,
-        success: true,
-        metadata: {
-          ...metadata,
-          precisionDuration,
-        },
-      };
+        startHighResTime,
+        operationMetadata
+      );
 
-      this.info(`Operation completed: ${operation}`, {
-        duration,
-        operation,
-        ...metadata,
+      this.info(`Operation completed: ${operationName}`, {
+        duration: performanceMetrics.duration,
+        operation: operationName,
+        ...operationMetadata,
       });
 
-      return { result, metrics };
+      return { result, metrics: performanceMetrics };
     } catch (error) {
-      const endTime = Date.now();
-      const endHrTime = process.hrtime.bigint();
-      const duration = endTime - startTime;
-      const precisionDuration = Number(endHrTime - startHrTime) / 1000000;
-
-      const metrics: PerformanceMetrics = {
-        operation,
+      const performanceMetrics = this.createFailedMetrics(
+        operationName,
         startTime,
-        endTime,
-        duration,
-        success: false,
-        metadata: {
-          ...metadata,
-          precisionDuration,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      };
+        startHighResTime,
+        error,
+        operationMetadata
+      );
 
-      this.error(`Operation failed: ${operation}`, error instanceof Error ? error : new Error(String(error)), {
-        duration,
-        operation,
-        ...metadata,
-      });
+      this.error(
+        `Operation failed: ${operationName}`,
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          duration: performanceMetrics.duration,
+          operation: operationName,
+          ...operationMetadata,
+        }
+      );
 
       throw error;
     }
+  }
+
+  private createSuccessfulMetrics(
+    operationName: string,
+    startTime: number,
+    startHighResTime: bigint,
+    metadata?: Readonly<Record<string, unknown>>
+  ): PerformanceMetrics {
+    const endTime = Date.now();
+    const endHighResTime = process.hrtime.bigint();
+    const duration = endTime - startTime;
+    const precisionDuration = Number(endHighResTime - startHighResTime) / 1000000; // Convert to ms
+
+    return {
+      operation: operationName,
+      startTime,
+      endTime,
+      duration,
+      success: true,
+      metadata: {
+        ...metadata,
+        precisionDuration,
+      },
+    };
+  }
+
+  private createFailedMetrics(
+    operationName: string,
+    startTime: number,
+    startHighResTime: bigint,
+    error: unknown,
+    metadata?: Readonly<Record<string, unknown>>
+  ): PerformanceMetrics {
+    const endTime = Date.now();
+    const endHighResTime = process.hrtime.bigint();
+    const duration = endTime - startTime;
+    const precisionDuration = Number(endHighResTime - startHighResTime) / 1000000;
+
+    return {
+      operation: operationName,
+      startTime,
+      endTime,
+      duration,
+      success: false,
+      metadata: {
+        ...metadata,
+        precisionDuration,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
   }
 }
 
@@ -223,62 +274,90 @@ export class Logger {
  * Metrics collector for application performance monitoring
  */
 export class MetricsCollector {
-  private metrics: Map<string, Metric[]> = new Map();
-  private counters: Map<string, number> = new Map();
-  private gauges: Map<string, number> = new Map();
-  private histograms: Map<string, number[]> = new Map();
+  private readonly metrics: Map<string, Metric[]> = new Map();
+  private readonly counters: Map<string, number> = new Map();
+  private readonly gauges: Map<string, number> = new Map();
+  private readonly histograms: Map<string, number[]> = new Map();
 
-  recordMetric(name: string, value: number, unit: string, tags?: Record<string, string>): void {
+  private static readonly MAX_METRICS_HISTORY = 1000;
+
+  recordMetric(
+    metricName: string,
+    metricValue: number,
+    metricUnit: string,
+    metricTags?: Readonly<Record<string, string>>
+  ): void {
     const metric: Metric = {
-      name,
-      value,
-      unit,
-      tags,
+      name: metricName,
+      value: metricValue,
+      unit: metricUnit,
+      tags: metricTags,
       timestamp: Date.now(),
     };
 
-    if (!this.metrics.has(name)) {
-      this.metrics.set(name, []);
+    this.addMetricToHistory(metricName, metric);
+  }
+
+  incrementCounter(
+    counterName: string,
+    incrementValue: number = 1,
+    counterTags?: Readonly<Record<string, string>>
+  ): void {
+    const counterKey = this.createKey(counterName, counterTags);
+    const currentCount = this.counters.get(counterKey) || 0;
+    const newCount = currentCount + incrementValue;
+
+    this.counters.set(counterKey, newCount);
+    this.recordMetric(`${counterName}_count`, newCount, 'count', counterTags);
+  }
+
+  setGauge(
+    gaugeName: string,
+    gaugeValue: number,
+    gaugeTags?: Readonly<Record<string, string>>
+  ): void {
+    const gaugeKey = this.createKey(gaugeName, gaugeTags);
+    this.gauges.set(gaugeKey, gaugeValue);
+    this.recordMetric(`${gaugeName}_gauge`, gaugeValue, 'value', gaugeTags);
+  }
+
+  recordHistogram(
+    histogramName: string,
+    histogramValue: number,
+    histogramTags?: Readonly<Record<string, string>>
+  ): void {
+    const histogramKey = this.createKey(histogramName, histogramTags);
+
+    this.addHistogramValue(histogramKey, histogramValue);
+    this.recordMetric(`${histogramName}_histogram`, histogramValue, 'value', histogramTags);
+  }
+
+  private addMetricToHistory(metricName: string, metric: Metric): void {
+    if (!this.metrics.has(metricName)) {
+      this.metrics.set(metricName, []);
     }
 
-    this.metrics.get(name)!.push(metric);
+    const metricHistory = this.metrics.get(metricName)!;
+    metricHistory.push(metric);
 
-    // Keep only last 1000 metrics per name to prevent memory leaks
-    const metrics = this.metrics.get(name)!;
-    if (metrics.length > 1000) {
-      metrics.splice(0, metrics.length - 1000);
+    // Prevent memory leaks by limiting history
+    if (metricHistory.length > MetricsCollector.MAX_METRICS_HISTORY) {
+      metricHistory.splice(0, metricHistory.length - MetricsCollector.MAX_METRICS_HISTORY);
     }
   }
 
-  incrementCounter(name: string, value: number = 1, tags?: Record<string, string>): void {
-    const key = this.createKey(name, tags);
-    const current = this.counters.get(key) || 0;
-    this.counters.set(key, current + value);
-    this.recordMetric(`${name}_count`, current + value, 'count', tags);
-  }
-
-  setGauge(name: string, value: number, tags?: Record<string, string>): void {
-    const key = this.createKey(name, tags);
-    this.gauges.set(key, value);
-    this.recordMetric(`${name}_gauge`, value, 'value', tags);
-  }
-
-  recordHistogram(name: string, value: number, tags?: Record<string, string>): void {
-    const key = this.createKey(name, tags);
-    
-    if (!this.histograms.has(key)) {
-      this.histograms.set(key, []);
+  private addHistogramValue(histogramKey: string, value: number): void {
+    if (!this.histograms.has(histogramKey)) {
+      this.histograms.set(histogramKey, []);
     }
 
-    const values = this.histograms.get(key)!;
-    values.push(value);
+    const histogramValues = this.histograms.get(histogramKey)!;
+    histogramValues.push(value);
 
-    // Keep only last 1000 values
-    if (values.length > 1000) {
-      values.splice(0, values.length - 1000);
+    // Keep only last 1000 values to prevent memory leaks
+    if (histogramValues.length > MetricsCollector.MAX_METRICS_HISTORY) {
+      histogramValues.splice(0, histogramValues.length - MetricsCollector.MAX_METRICS_HISTORY);
     }
-
-    this.recordMetric(`${name}_histogram`, value, 'value', tags);
   }
 
   getMetricSummary(name: string, tags?: Record<string, string>): {

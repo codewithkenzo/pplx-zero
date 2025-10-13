@@ -5,23 +5,23 @@ import { PerplexitySearchTool } from "./index.js";
 import type { SearchResult } from "./schema.js";
 
 export class PerplexitySearchEngine {
-  private client: typeof perplexitySearch;
+  private readonly searchClient: typeof perplexitySearch;
 
-  constructor(private apiKey: string) {
+  constructor(private readonly apiKey: string) {
     if (!apiKey) {
       throw new PerplexitySearchError(
         "Perplexity API key is required",
         ErrorCode.API_KEY_MISSING
       );
     }
-    this.client = perplexitySearch;
+    this.searchClient = perplexitySearch;
   }
 
-  private createStreamingEvent(type: StreamingEvent["type"], data: any): StreamingEvent {
+  private createStreamingEvent(eventType: StreamingEvent["type"], eventData: unknown): StreamingEvent {
     return {
-      type,
+      type: eventType,
       timestamp: new Date().toISOString(),
-      data,
+      data: eventData,
     };
   }
 
@@ -30,225 +30,214 @@ export class PerplexitySearchEngine {
   }
 
   private async executeSingleQuery(
-    query: string,
-    config: SearchConfig,
-    signal: AbortSignal
+    searchQuery: string,
+    searchConfig: SearchConfig,
+    abortSignal: AbortSignal
   ): Promise<QueryResult> {
     try {
-      const searchParams: any = {
-        query,
-        max_results: config.maxResults,
+      const searchParameters = {
+        query: searchQuery,
+        max_results: searchConfig.maxResults,
+        ...(searchConfig.country && { country: searchConfig.country }),
       };
 
-      if (config.country) {
-        searchParams.country = config.country;
-      }
-
-      const search = await Promise.race([
-        this.client(searchParams.query),
-        new Promise<never>((_, reject) => {
-          if (signal.aborted) {
-            reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
-          }
-          const timeout = setTimeout(() => {
-            reject(new PerplexitySearchError(
-              `Request timeout after ${config.timeout}ms`,
-              ErrorCode.UNEXPECTED_ERROR
-            ));
-          }, config.timeout);
-          signal.addEventListener("abort", () => {
-            clearTimeout(timeout);
-            reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
-          });
-        }),
-      ]);
+      const searchResponse = await this.executeWithTimeout(
+        () => this.searchClient(searchParameters.query),
+        searchConfig.timeout || 30000,
+        abortSignal
+      );
 
       // Transform the perplexityai package response to our format
-      let results: SearchResult[] = [];
-      
-      if (search.sources && Array.isArray(search.sources)) {
-        results = search.sources.map((source: any) => ({
-          title: source.name || 'Untitled',
-          url: source.url || '',
-          snippet: search.detailed || search.concise || '',
-          date: undefined,
-        }));
-      } else {
-        // If no sources, create a single result with the text content
-        results = [{
-          title: 'Search Result',
-          url: 'https://www.perplexity.ai/',
-          snippet: search.detailed || search.concise || 'No content available',
-          date: undefined,
-        }];
-      }
-
-      // Limit results to maxResults if specified
-      const maxResults = config.maxResults || 5;
-      const limitedResults = results.slice(0, maxResults);
+      const transformedResults = this.transformSearchResponse(searchResponse, searchConfig.maxResults || 5);
 
       return {
-        query,
-        results: limitedResults,
+        query: searchQuery,
+        results: transformedResults,
       };
     } catch (error) {
       if (error instanceof PerplexitySearchError) {
         throw error;
       }
 
-      let code = ErrorCode.UNEXPECTED_ERROR;
-      let message = "Unexpected error occurred";
-      let details: Record<string, any> = {};
-
-      if (error instanceof Error) {
-        message = error.message;
-        
-        if (error.message.includes("timeout") || error.message.includes("aborted")) {
-          code = ErrorCode.UNEXPECTED_ERROR;
-        } else if (error.message.includes("rate limit")) {
-          code = ErrorCode.UNEXPECTED_ERROR;
-        } else if (error.message.includes("network") || error.message.includes("fetch")) {
-          code = ErrorCode.UNEXPECTED_ERROR;
-        } else if (error.message.includes("429")) {
-          code = ErrorCode.UNEXPECTED_ERROR;
-        } else if (error.message.includes("401") || error.message.includes("403")) {
-          code = ErrorCode.UNEXPECTED_ERROR;
-        } else if (error.message.includes("4") || error.message.includes("5")) {
-          code = ErrorCode.UNEXPECTED_ERROR;
-        }
-
-        details = {
-          originalError: error.message,
-          stack: error.stack,
-        };
-      }
-
-      throw new PerplexitySearchError(message, code, details);
+      const searchError = this.categorizeSearchError(error);
+      throw searchError;
     }
   }
 
+  private async executeWithTimeout<T>(
+    operation: () => Promise<T>,
+    timeoutMs: number,
+    abortSignal: AbortSignal
+  ): Promise<T> {
+    return Promise.race([
+      operation(),
+      new Promise<never>((_, reject) => {
+        if (abortSignal.aborted) {
+          reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
+          return;
+        }
+
+        const timeoutId = setTimeout(() => {
+          reject(new PerplexitySearchError(
+            `Request timeout after ${timeoutMs}ms`,
+            ErrorCode.UNEXPECTED_ERROR
+          ));
+        }, timeoutMs);
+
+        abortSignal.addEventListener("abort", () => {
+          clearTimeout(timeoutId);
+          reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
+        });
+      }),
+    ]);
+  }
+
+  private transformSearchResponse(searchResponse: any, maxResults: number): SearchResult[] {
+    let results: SearchResult[] = [];
+
+    if (searchResponse.sources && Array.isArray(searchResponse.sources)) {
+      results = searchResponse.sources.map((source: any) => ({
+        title: source.name || 'Untitled',
+        url: source.url || '',
+        snippet: searchResponse.detailed || searchResponse.concise || '',
+        date: undefined,
+      }));
+    } else {
+      // If no sources, create a single result with the text content
+      results = [{
+        title: 'Search Result',
+        url: 'https://www.perplexity.ai/',
+        snippet: searchResponse.detailed || searchResponse.concise || 'No content available',
+        date: undefined,
+      }];
+    }
+
+    return results.slice(0, maxResults);
+  }
+
+  private categorizeSearchError(error: unknown): PerplexitySearchError {
+    let message = "Unexpected error occurred";
+    let details: Record<string, unknown> = {};
+
+    if (error instanceof Error) {
+      message = error.message;
+      details = {
+        originalError: error.message,
+        stack: error.stack,
+      };
+    }
+
+    return new PerplexitySearchError(message, ErrorCode.UNEXPECTED_ERROR, details);
+  }
+
   private async executeBatchQueries(
-    queries: string[],
-    config: SearchConfig,
-    signal: AbortSignal
+    queryList: string[],
+    searchConfig: SearchConfig,
+    abortSignal: AbortSignal
   ): Promise<QueryResult[]> {
+    const concurrencyLimit = searchConfig.concurrency || 5;
+    const semaphore = new Array(concurrencyLimit).fill(null);
+
+    let queryIndex = 0;
     const results: QueryResult[] = [];
-    const semaphore = new Array(config.concurrency!).fill(null);
-    
-    let index = 0;
-    const executeNext = async (): Promise<QueryResult | null> => {
-      if (signal.aborted) {
-        return null;
+
+    const executeNextQuery = async (): Promise<void> => {
+      if (abortSignal.aborted) {
+        return;
       }
 
-      const currentIndex = index++;
-      if (currentIndex >= queries.length) {
-        return null;
+      const currentQueryIndex = queryIndex++;
+      if (currentQueryIndex >= queryList.length) {
+        return;
       }
 
-      const query = queries[currentIndex];
-      this.streamEvent(this.createStreamingEvent("query_start", { 
-        query, 
-        index: currentIndex,
-        total: queries.length 
+      const currentQuery = queryList[currentQueryIndex];
+
+      this.streamEvent(this.createStreamingEvent("query_start", {
+        query: currentQuery,
+        index: currentQueryIndex,
+        total: queryList.length
       }));
 
       try {
-        const result = await this.executeSingleQuery(query, config, signal);
-        this.streamEvent(this.createStreamingEvent("query_complete", { 
-          query, 
-          index: currentIndex,
-          resultCount: result.results.length 
+        const queryResult = await this.executeSingleQuery(currentQuery, searchConfig, abortSignal);
+        results.push(queryResult);
+
+        this.streamEvent(this.createStreamingEvent("query_complete", {
+          query: currentQuery,
+          index: currentQueryIndex,
+          resultCount: queryResult.results.length
         }));
-        return result;
       } catch (error) {
-        const errorResult: QueryResult = {
-          query,
-          results: [],
-          error: error instanceof PerplexitySearchError ? {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-          } : {
-            code: ErrorCode.UNEXPECTED_ERROR,
-            message: error instanceof Error ? error.message : "Unknown error",
-          },
-        };
-        this.streamEvent(this.createStreamingEvent("error", { 
-          query, 
-          index: currentIndex,
-          error: errorResult.error 
+        const errorResult = this.createErrorQueryResult(currentQuery, error);
+        results.push(errorResult);
+
+        this.streamEvent(this.createStreamingEvent("error", {
+          query: currentQuery,
+          index: currentQueryIndex,
+          error: errorResult.error
         }));
-        return errorResult;
       }
     };
 
-    const workers = semaphore.map(async () => {
-      while (!signal.aborted) {
-        const result = await executeNext();
-        if (result === null) break;
-        results.push(result);
+    // Create concurrent workers
+    const workerPromises = semaphore.map(async () => {
+      while (!abortSignal.aborted && queryIndex < queryList.length) {
+        await executeNextQuery();
       }
     });
 
-    await Promise.all(workers);
+    await Promise.all(workerPromises);
 
-    return results.sort((a, b) => {
-      const aIndex = queries.indexOf(a.query);
-      const bIndex = queries.indexOf(b.query);
-      return aIndex - bIndex;
+    // Return results in original query order
+    return results.sort((resultA, resultB) => {
+      const indexA = queryList.indexOf(resultA.query);
+      const indexB = queryList.indexOf(resultB.query);
+      return indexA - indexB;
     });
   }
 
-  async search(config: SearchConfig, signal: AbortSignal = new AbortController().signal): Promise<ToolOutput> {
-    const startTime = Date.now();
-    
-    try {
-      this.streamEvent(this.createStreamingEvent("start", { 
-        mode: config.mode,
-        maxResults: config.maxResults,
-        concurrency: config.concurrency,
-      }));
-
-      let results: QueryResult[];
-
-      if (config.mode === "single") {
-        results = [await this.executeSingleQuery(config.query!, config, signal)];
-      } else {
-        results = await this.executeBatchQueries(config.queries!, config, signal);
-      }
-
-      const totalResults = results.reduce((sum, result) => sum + result.results.length, 0);
-      const executionTime = Date.now() - startTime;
-
-      this.streamEvent(this.createStreamingEvent("complete", { 
-        totalQueries: results.length,
-        totalResults,
-        executionTime,
-      }));
-
-      return {
-        success: true,
-        results,
-        metadata: {
-          totalQueries: results.length,
-          totalResults,
-          executionTime,
-          mode: config.mode,
-        },
-      };
-    } catch (error) {
-      const executionTime = Date.now() - startTime;
-      
-      const errorOutput = error instanceof PerplexitySearchError ? {
+  private createErrorQueryResult(query: string, error: unknown): QueryResult {
+    return {
+      query,
+      results: [],
+      error: error instanceof PerplexitySearchError ? {
         code: error.code,
         message: error.message,
         details: error.details,
       } : {
         code: ErrorCode.UNEXPECTED_ERROR,
         message: error instanceof Error ? error.message : "Unknown error",
-        details: error instanceof Error ? { stack: error.stack } : {},
+      },
+    };
+  }
+
+  async search(
+  searchConfig: SearchConfig,
+  abortSignal: AbortSignal = new AbortController().signal
+): Promise<ToolOutput> {
+    const searchStartTime = Date.now();
+
+    try {
+      this.streamEvent(this.createStreamingEvent("start", {
+        mode: searchConfig.mode,
+        maxResults: searchConfig.maxResults,
+        concurrency: searchConfig.concurrency,
+      }));
+
+      const queryResults = await this.executeQueryBasedOnMode(searchConfig, abortSignal);
+      const searchMetrics = this.calculateSearchMetrics(queryResults, searchStartTime);
+
+      this.streamEvent(this.createStreamingEvent("complete", searchMetrics));
+
+      return {
+        success: true,
+        results: queryResults,
+        metadata: searchMetrics,
       };
+    } catch (error) {
+      const executionTime = Date.now() - searchStartTime;
+      const errorOutput = this.formatSearchError(error);
 
       this.streamEvent(this.createStreamingEvent("error", errorOutput));
 
@@ -260,10 +249,54 @@ export class PerplexitySearchEngine {
           totalQueries: 0,
           totalResults: 0,
           executionTime,
-          mode: config.mode,
+          mode: searchConfig.mode,
         },
       };
     }
+  }
+
+  private async executeQueryBasedOnMode(
+    searchConfig: SearchConfig,
+    abortSignal: AbortSignal
+  ): Promise<QueryResult[]> {
+    if (searchConfig.mode === "single") {
+      return [await this.executeSingleQuery(searchConfig.query!, searchConfig, abortSignal)];
+    } else {
+      return this.executeBatchQueries(searchConfig.queries!, searchConfig, abortSignal);
+    }
+  }
+
+  private calculateSearchMetrics(queryResults: QueryResult[], startTime: number): {
+    totalQueries: number;
+    totalResults: number;
+    executionTime: number;
+    mode: string;
+  } {
+    const totalResults = queryResults.reduce((sum, result) => sum + result.results.length, 0);
+    const executionTime = Date.now() - startTime;
+
+    return {
+      totalQueries: queryResults.length,
+      totalResults,
+      executionTime,
+      mode: 'search',
+    };
+  }
+
+  private formatSearchError(error: unknown): {
+    code: ErrorCode;
+    message: string;
+    details: Record<string, unknown>;
+  } {
+    return error instanceof PerplexitySearchError ? {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+    } : {
+      code: ErrorCode.UNEXPECTED_ERROR,
+      message: error instanceof Error ? error.message : "Unknown error",
+      details: error instanceof Error ? { stack: error.stack } : {},
+    };
   }
 }
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { PerplexitySearchTool } from './index.js';
@@ -10,8 +9,26 @@ import { type EventV1, type BatchSearchInputV1 } from './schema.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Define CLI configuration
+interface CliOptions {
+  input?: string;
+  stdin?: boolean;
+  concurrency?: string;
+  timeout?: string;
+  workspace?: string;
+  format?: string;
+  'dry-run'?: boolean;
+  version?: boolean;
+  help?: boolean;
+}
+
+interface ParsedArgs {
+  values: CliOptions;
+  positionals: string[];
+}
+
 // Parse CLI arguments
-const { values, positionals } = parseArgs({
+const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = parseArgs({
   args: process.argv.slice(2),
   options: {
     input: { type: 'string', short: 'i' },
@@ -25,10 +42,10 @@ const { values, positionals } = parseArgs({
     help: { type: 'boolean', short: 'h' },
   },
   allowPositionals: true,
-});
+}) as ParsedArgs;
 
 // Show help
-if (values.help) {
+if (cliOptions.help) {
   console.error(`
 Perplexity Search Tool
 
@@ -66,9 +83,9 @@ EXAMPLES:
 }
 
 // Show version
-if (values.version) {
-  const packageJson = await import('../package.json', { assert: { type: 'json' } });
-  console.error(`pplx v${packageJson.default.version}`);
+if (cliOptions.version) {
+  const packageInfo = await import('../package.json', { assert: { type: 'json' } });
+  console.error(`pplx v${packageInfo.default.version}`);
   process.exit(0);
 }
 
@@ -77,111 +94,155 @@ function logEvent(event: EventV1): void {
   console.error(JSON.stringify(event));
 }
 
-async function readJsonFile(filePath: string): Promise<any> {
+async function readJsonFile(filePath: string): Promise<unknown> {
   try {
-    const content = await Bun.file(filePath).text();
-    return JSON.parse(content);
+    const fileContent = await Bun.file(filePath).text();
+    return JSON.parse(fileContent);
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     logEvent({
       time: new Date().toISOString(),
       level: 'error',
       event: 'file_read_error',
-      data: { file: filePath, error: error instanceof Error ? error.message : String(error) }
+      data: { file: filePath, error: errorMessage }
     });
     throw error;
   }
 }
 
 async function readJsonlFromStdin(): Promise<BatchSearchInputV1> {
-  const rl = createInterface({
+  const readLineInterface = createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: false
   });
 
-  const requests = [];
-  let lineNumber = 0;
+  const searchRequests: unknown[] = [];
+  let currentLineNumber = 0;
 
-  for await (const line of rl) {
-    lineNumber++;
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+  for await (const line of readLineInterface) {
+    currentLineNumber++;
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
 
     try {
-      const request = JSON.parse(trimmed);
-      requests.push(request);
+      const parsedRequest = JSON.parse(trimmedLine);
+      searchRequests.push(parsedRequest);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logEvent({
         time: new Date().toISOString(),
         level: 'error',
         event: 'jsonl_parse_error',
-        data: { line: lineNumber, content: trimmed, error: error instanceof Error ? error.message : String(error) }
+        data: { line: currentLineNumber, content: trimmedLine, error: errorMessage }
       });
-      throw new Error(`Invalid JSON on line ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Invalid JSON on line ${currentLineNumber}: ${errorMessage}`);
     }
   }
 
   return {
     version: '1.0.0',
-    requests,
+    requests: searchRequests,
   };
+}
+
+// Constants for validation
+const MIN_CONCURRENCY = 1;
+const MAX_CONCURRENCY = 20;
+const MIN_TIMEOUT = 1000;
+const MAX_TIMEOUT = 300000;
+const DEFAULT_CONCURRENCY = 5;
+const DEFAULT_TIMEOUT = 30000;
+
+// Validate and parse numeric arguments
+function parseNumericArgument(
+  value: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+  name: string
+): number {
+  if (!value) return defaultValue;
+
+  const parsedValue = parseInt(value, 10);
+  if (isNaN(parsedValue) || parsedValue < min || parsedValue > max) {
+    throw new Error(`${name} must be between ${min} and ${max}`);
+  }
+
+  return parsedValue;
 }
 
 // Main execution
 async function main(): Promise<void> {
-  const startTime = Date.now();
-  
-  try {
-    const concurrency = values.concurrency ? parseInt(values.concurrency) : 5;
-    const timeout = values.timeout ? parseInt(values.timeout) : 30000;
-    const workspace = values.workspace;
-    const format = values.format as 'json' | 'jsonl';
-    const isDryRun = values['dry-run'];
+  const executionStartTime = Date.now();
 
-    // Validate arguments
-    if (concurrency < 1 || concurrency > 20) {
-      throw new Error('Concurrency must be between 1 and 20');
-    }
-    if (timeout < 1000 || timeout > 300000) {
-      throw new Error('Timeout must be between 1000ms and 300000ms (5 minutes)');
-    }
-    if (!['json', 'jsonl'].includes(format)) {
+  try {
+    // Parse and validate CLI arguments
+    const maxConcurrency = parseNumericArgument(
+      cliOptions.concurrency,
+      DEFAULT_CONCURRENCY,
+      MIN_CONCURRENCY,
+      MAX_CONCURRENCY,
+      'Concurrency'
+    );
+
+    const requestTimeout = parseNumericArgument(
+      cliOptions.timeout,
+      DEFAULT_TIMEOUT,
+      MIN_TIMEOUT,
+      MAX_TIMEOUT,
+      'Timeout'
+    );
+
+    const workspaceDirectory = cliOptions.workspace;
+    const outputFormat = cliOptions.format as 'json' | 'jsonl';
+    const isDryRunMode = cliOptions['dry-run'];
+
+    // Validate output format
+    if (!['json', 'jsonl'].includes(outputFormat)) {
       throw new Error('Format must be json or jsonl');
     }
 
-    // Initialize tool
-    const tool = new PerplexitySearchTool(workspace);
-    
+    // Initialize search tool
+    const searchTool = new PerplexitySearchTool(workspaceDirectory);
+
     logEvent({
       time: new Date().toISOString(),
       level: 'info',
       event: 'tool_initialized',
-      data: { concurrency, timeout, workspace, format, dryRun: isDryRun }
+      data: {
+        concurrency: maxConcurrency,
+        timeout: requestTimeout,
+        workspace: workspaceDirectory,
+        format: outputFormat,
+        dryRun: isDryRunMode
+      }
     });
 
-    let batchInput: BatchSearchInputV1;
-    let inputSource: string;
+    let batchSearchInput: BatchSearchInputV1;
+    let inputSourceType: string;
 
     // Determine input source
-    if (values.stdin) {
-      batchInput = await readJsonlFromStdin();
-      inputSource = 'stdin';
-    } else if (values.input) {
-      batchInput = await readJsonFile(values.input);
-      inputSource = values.input;
-    } else if (positionals.length > 0) {
+    if (cliOptions.stdin) {
+      batchSearchInput = await readJsonlFromStdin();
+      inputSourceType = 'stdin';
+    } else if (cliOptions.input) {
+      batchSearchInput = await readJsonFile(cliOptions.input) as BatchSearchInputV1;
+      inputSourceType = cliOptions.input;
+    } else if (commandLineQueries.length > 0) {
       // Single query from command line
-      batchInput = {
+      const combinedQuery = commandLineQueries.join(' ');
+      batchSearchInput = {
         version: '1.0.0',
         requests: [{
           op: 'search',
           args: {
-            query: positionals.join(' '),
+            query: combinedQuery,
             maxResults: 5,
           },
         }],
       };
-      inputSource = 'cli';
+      inputSourceType = 'cli';
     } else {
       throw new Error('No input provided. Use --help for usage information.');
     }
@@ -190,31 +251,35 @@ async function main(): Promise<void> {
       time: new Date().toISOString(),
       level: 'info',
       event: 'input_loaded',
-      data: { source: inputSource, requestCount: batchInput.requests?.length || 1 }
+      data: {
+        source: inputSourceType,
+        requestCount: batchSearchInput.requests?.length || 1
+      }
     });
 
-    // Add global options to batch input
-    batchInput.options = {
-      concurrency,
-      timeoutMs: timeout,
-      workspace,
+    // Merge global options with batch input options
+    batchSearchInput.options = {
+      concurrency: maxConcurrency,
+      timeoutMs: requestTimeout,
+      workspace: workspaceDirectory,
       failFast: false,
-      ...batchInput.options,
+      ...batchSearchInput.options,
     };
 
-    if (isDryRun) {
+    // Handle dry run mode
+    if (isDryRunMode) {
       logEvent({
         time: new Date().toISOString(),
         level: 'info',
         event: 'dry_run_completed',
-        data: { requestCount: batchInput.requests?.length || 1 }
+        data: { requestCount: batchSearchInput.requests?.length || 1 }
       });
-      
+
       console.log(JSON.stringify({
         ok: true,
         message: 'Dry run completed - input validation passed',
-        requestCount: batchInput.requests?.length || 1,
-        inputSource,
+        requestCount: batchSearchInput.requests?.length || 1,
+        inputSource: inputSourceType,
       }, null, 2));
       return;
     }
@@ -224,46 +289,49 @@ async function main(): Promise<void> {
       time: new Date().toISOString(),
       level: 'info',
       event: 'search_started',
-      data: { requestCount: batchInput.requests?.length || 1 }
+      data: { requestCount: batchSearchInput.requests?.length || 1 }
     });
 
-    const result = await tool.runBatch(batchInput);
+    const searchResults = await searchTool.runBatch(batchSearchInput);
 
     logEvent({
       time: new Date().toISOString(),
       level: 'info',
       event: 'search_completed',
       data: {
-        totalDuration: result.summary.totalDuration,
-        successful: result.summary.successful,
-        failed: result.summary.failed,
+        totalDuration: searchResults.summary.totalDuration,
+        successful: searchResults.summary.successful,
+        failed: searchResults.summary.failed,
       }
     });
 
-    // Output results
-    if (format === 'jsonl') {
+    // Output results in requested format
+    if (outputFormat === 'jsonl') {
       // Output each result as a separate JSON line
-      for (const searchResult of result.results) {
+      for (const searchResult of searchResults.results) {
         console.log(JSON.stringify(searchResult));
       }
     } else {
       // Output as a single JSON object
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(searchResults, null, 2));
     }
 
     // Exit with appropriate code
-    process.exit(result.ok ? 0 : 1);
+    process.exit(searchResults.ok ? 0 : 1);
 
   } catch (error) {
-    const duration = Date.now() - startTime;
+    const executionDuration = Date.now() - executionStartTime;
     
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? error.stack : undefined;
+
     logEvent({
       time: new Date().toISOString(),
       level: 'error',
       event: 'execution_failed',
       data: {
-        error: error instanceof Error ? error.message : String(error),
-        duration,
+        error: errorMessage,
+        duration: executionDuration,
       }
     });
 
@@ -272,10 +340,10 @@ async function main(): Promise<void> {
       ok: false,
       error: {
         code: 'EXECUTION_ERROR',
-        message: error instanceof Error ? error.message : String(error),
-        details: error instanceof Error ? error.stack : undefined,
+        message: errorMessage,
+        details: errorDetails,
       },
-      duration,
+      duration: executionDuration,
     }, null, 2));
 
     process.exit(1);
