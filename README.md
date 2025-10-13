@@ -1,4 +1,4 @@
-# 🚀 PPLX-Zero
+# PPLX-Zero
 
 > Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises
 
@@ -8,20 +8,20 @@
 
 PPLX-Zero is a blazing-fast, production-ready TypeScript implementation of Perplexity AI search integration. Built with Bun runtime for maximum performance and zero bloat.
 
-## ✨ Key Features
+## Key Features
 
-- **⚡ Lightning Fast** - Concurrent searches with intelligent rate limiting
-- **🎯 Zero Config** - Works out of the box with just an API key
+- **⚡ Fast Performance** - Concurrent searches with intelligent rate limiting
+- **🎯 Zero Configuration** - Works out of the box with just an API key
 - **📦 Batch Processing** - Handle multiple queries simultaneously
 - **🔄 Real-time Streaming** - Progress updates via JSONL events
 - **🛡️ Type Safe** - Full Zod validation and TypeScript support
 - **🌍 Cross-Platform** - Native Bun runtime everywhere
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1️⃣ Install
+### Install
 
-**📦 Package Manager Installation (Recommended)**
+**Package Manager Installation (Recommended)**
 
 ```bash
 # npm (Node.js package manager)
@@ -37,7 +37,7 @@ cd pplx-zero
 makepkg -si
 ```
 
-**🔨 Manual Installation**
+**Manual Installation**
 
 ```bash
 # Clone and build locally
@@ -49,7 +49,7 @@ bun install && bun run build
 sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/pplx
 ```
 
-### 2️⃣ Setup API Key
+### Setup API Key
 
 ```bash
 export PERPLEXITY_API_KEY="your-perplexity-api-key"
@@ -57,7 +57,7 @@ export PERPLEXITY_API_KEY="your-perplexity-api-key"
 export PERPLEXITY_AI_API_KEY="your-alternative-api-key"
 ```
 
-### 3️⃣ Start Searching
+### Start Searching
 
 ```bash
 # Single query (CLI command is 'pplx')
@@ -70,7 +70,7 @@ pplx --input queries.json
 cat queries.jsonl | pplx --stdin
 ```
 
-## 📖 Usage Guide
+## Usage Guide
 
 ### Command Line Interface
 
@@ -128,7 +128,7 @@ const result = await tool.runBatch({
 console.log(result);
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
@@ -141,7 +141,7 @@ console.log(result);
 | `--version` | `-v` | boolean | - | Show version |
 | `--help` | `-h` | boolean | - | Show help |
 
-## 📊 Output Formats
+## Output Formats
 
 ### JSON (Default)
 ```json
@@ -164,7 +164,7 @@ pplx --format jsonl "AI trends"
 ```
 Each result printed as a separate JSON line for real-time processing.
 
-## 🔧 Development
+## Development
 
 ```bash
 # Development mode
@@ -183,7 +183,7 @@ bun run build
 bun run build:binary
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 - **Bun Runtime** - Ultra-fast JavaScript runtime
 - **Zod Validation** - Type-safe schema validation
@@ -191,7 +191,7 @@ bun run build:binary
 - **Semaphore Pattern** - Controlled concurrency
 - **Streaming Events** - Real-time progress updates
 
-## 🛡️ Security Features
+## Security Features
 
 - Environment variable API key management
 - Input validation and sanitization
@@ -199,7 +199,7 @@ bun run build:binary
 - Error information filtering
 - No external dependencies beyond core runtime
 
-## 📋 Error Handling
+## Error Handling
 
 PPLX-Zero provides comprehensive error classification:
 
@@ -215,11 +215,11 @@ enum ErrorCode {
 }
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
