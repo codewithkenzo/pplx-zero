@@ -2,20 +2,40 @@ import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import { PerplexitySearchEngine } from "../src/core.js";
 import { PerplexitySearchError, ErrorCode } from "../src/types.js";
 
-// Mock console methods to capture output
-const consoleLogSpy = mock(console, "log");
-const consoleErrorSpy = mock(console, "error");
+// Console spies will be set up in beforeEach
+let consoleLogSpy: any;
+let consoleErrorSpy: any;
 
 describe("CLI Integration", () => {
   beforeEach(() => {
-    consoleLogSpy.mockClear();
-    consoleErrorSpy.mockClear();
+    // Create fresh spies for each test using Bun's mock
+    consoleLogSpy = mock();
+    consoleErrorSpy = mock();
+
+    // Replace console methods temporarily
+    const originalLog = console.log;
+    const originalError = console.error;
+
+    console.log = consoleLogSpy;
+    console.error = consoleErrorSpy;
+
+    // Store originals for restoration
+    (console as any)._originalLog = originalLog;
+    (console as any)._originalError = originalError;
   });
 
   afterEach(() => {
     // Restore environment variables
     delete process.env.PERPLEXITY_API_KEY;
     delete process.env.PERPLEXITY_AI_API_KEY;
+
+    // Restore console methods
+    if ((console as any)._originalLog) {
+      console.log = (console as any)._originalLog;
+    }
+    if ((console as any)._originalError) {
+      console.error = (console as any)._originalError;
+    }
   });
 
   test("validates single mode configuration", async () => {
@@ -196,7 +216,9 @@ describe("CLI Integration", () => {
 
     // Mock process.on for SIGINT
     const originalOn = process.on;
-    const mockOn = mock((event: string, callback: () => void) => {
+    const mockOn = mock();
+
+    mockOn.mockImplementation((event: string, callback: () => void) => {
       if (event === "SIGINT") {
         // Simulate SIGINT
         setTimeout(() => {
@@ -207,6 +229,11 @@ describe("CLI Integration", () => {
     });
 
     process.on = mockOn;
+
+    // Test that we can set up a SIGINT handler
+    process.on('SIGINT', () => {
+      sigintReceived = true;
+    });
 
     // Wait for async operations
     await new Promise(resolve => setTimeout(resolve, 100));

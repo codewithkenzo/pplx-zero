@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { search as perplexitySearch } from 'perplexityai';
+import { z } from 'zod';
+import Perplexity from '@perplexity-ai/perplexity_ai';
 import { 
   SearchInputV1Schema,
   BatchSearchInputV1Schema,
@@ -18,7 +19,7 @@ import { ResilienceManager, DEFAULT_CONFIGS } from './util/resilience.js';
 import { Logger, MetricsCollector, createLogger } from './util/monitoring.js';
 
 export class PerplexitySearchTool {
-  private client: typeof perplexitySearch;
+  private client: Perplexity;
   private workspace: WorkspaceSandbox;
   private resilience: ResilienceManager;
   private logger: Logger;
@@ -36,8 +37,8 @@ export class PerplexitySearchTool {
     if (!apiKey) {
       throw new Error('PERPLEXITY_API_KEY or PERPLEXITY_AI_API_KEY environment variable is required');
     }
-    
-    this.client = perplexitySearch;
+
+    this.client = new Perplexity({ apiKey });
     this.workspace = new WorkspaceSandbox(workspacePath);
     
     // Initialize resilience patterns
@@ -168,14 +169,17 @@ export class PerplexitySearchTool {
 
   async runBatch(batchInput: BatchSearchInputV1, signal?: AbortSignal): Promise<BatchOutputV1> {
     const startTime = Date.now();
-    
+
     try {
-      // Validate batch input
-      const validatedBatch = BatchSearchInputV1Schema.parse(batchInput);
-      
+      // Basic batch validation - validate structure but not individual requests
+      const basicBatchSchema = BatchSearchInputV1Schema.omit({ requests: true }).extend({
+        requests: z.array(z.any()).min(1).max(100), // Accept any requests, validate individually
+      });
+      const validatedBatch = basicBatchSchema.parse(batchInput);
+
       const concurrency = validatedBatch.options?.concurrency || 5;
       const pool = new BoundedConcurrencyPool(concurrency);
-      
+
       // Create enhanced inputs with default IDs
       const enhancedInputs = validatedBatch.requests.map((req, index) => ({
         ...req,
@@ -187,7 +191,23 @@ export class PerplexitySearchTool {
       }));
 
       const results = await pool.execute(enhancedInputs, async (input) => {
-        return this.runTask(input as SearchInputV1, signal);
+        try {
+          // Validate each request individually
+          const validatedRequest = SearchInputV1Schema.parse(input);
+          return await this.runTask(validatedRequest, signal);
+        } catch (error) {
+          // If validation fails, return a failed result for this request
+          return {
+            id: input.id || randomUUID(),
+            ok: false,
+            error: {
+              code: ERROR_CODES.VALIDATION_FAILED,
+              message: error instanceof Error ? error.message : String(error),
+              details: error instanceof Error ? error.stack : undefined,
+            },
+            duration: 0,
+          };
+        }
       });
 
       const successful = results.filter(r => r.ok).length;
@@ -207,7 +227,7 @@ export class PerplexitySearchTool {
       };
     } catch (error) {
       const totalDuration = Date.now() - startTime;
-      
+
       return {
         version: '1.0.0',
         ok: false,
@@ -233,24 +253,33 @@ export class PerplexitySearchTool {
 
   private async performSearch(query: SearchQuery, signal: AbortSignal): Promise<SearchResult[]> {
     try {
-      // The perplexityai package returns { concise, detailed, sources }
-      const searchResult = await this.client(query.query);
+      // Use the official Perplexity API
+      const searchParameters: any = {
+        query: query.query,
+        max_results: query.maxResults || 5,
+      };
 
-      // Transform the sources array to our SearchResult format
-      if (searchResult.sources && Array.isArray(searchResult.sources)) {
-        return searchResult.sources.map((source: any) => ({
-          title: source.name || 'Untitled',
-          url: source.url || '',
-          snippet: searchResult.detailed || searchResult.concise || '',
-          date: undefined, // perplexityai doesn't provide date info
+      if (query.country) {
+        searchParameters.search_domain_filter = [`.${query.country.toLowerCase()}`];
+      }
+
+      const searchResponse = await this.client.search.create(searchParameters, { signal });
+
+      // Transform the API response to our SearchResult format
+      if (searchResponse.results && Array.isArray(searchResponse.results)) {
+        return searchResponse.results.map((result: any) => ({
+          title: result.title || 'Untitled',
+          url: result.url || '',
+          snippet: result.snippet || '',
+          date: result.date || undefined,
         }));
       }
 
-      // If no sources, return a single result with the text content
+      // If no results, return a single result with basic info
       return [{
         title: 'Search Result',
         url: 'https://www.perplexity.ai/',
-        snippet: searchResult.detailed || searchResult.concise || 'No content available',
+        snippet: 'No content available',
         date: undefined,
       }];
     } catch (error) {
@@ -320,6 +349,11 @@ export class PerplexitySearchTool {
 
   resetMetrics(): void {
     this.metrics.reset();
+  }
+
+  // Reset circuit breaker for testing
+  resetCircuitBreaker(): void {
+    this.resilience.resetCircuitBreaker();
   }
 
   // Method to register health checks

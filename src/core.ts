@@ -1,11 +1,11 @@
-import { search as perplexitySearch } from 'perplexityai';
+import Perplexity from '@perplexity-ai/perplexity_ai';
 import type { SearchConfig, QueryResult, ToolOutput, StreamingEvent } from "./types.js";
 import { PerplexitySearchError, ErrorCode } from "./types.js";
 import { PerplexitySearchTool } from "./index.js";
 import type { SearchResult } from "./schema.js";
 
 export class PerplexitySearchEngine {
-  private readonly searchClient: typeof perplexitySearch;
+  private readonly client: Perplexity;
 
   constructor(private readonly apiKey: string) {
     if (!apiKey) {
@@ -14,7 +14,7 @@ export class PerplexitySearchEngine {
         ErrorCode.API_KEY_MISSING
       );
     }
-    this.searchClient = perplexitySearch;
+    this.client = new Perplexity({ apiKey });
   }
 
   private createStreamingEvent(eventType: StreamingEvent["type"], eventData: unknown): StreamingEvent {
@@ -35,19 +35,18 @@ export class PerplexitySearchEngine {
     abortSignal: AbortSignal
   ): Promise<QueryResult> {
     try {
-      const searchParameters = {
+      const searchParameters: any = {
         query: searchQuery,
-        max_results: searchConfig.maxResults,
-        ...(searchConfig.country && { country: searchConfig.country }),
+        max_results: searchConfig.maxResults || 5,
       };
 
       const searchResponse = await this.executeWithTimeout(
-        () => this.searchClient(searchParameters.query),
+        () => this.client.search.create(searchParameters),
         searchConfig.timeout || 30000,
         abortSignal
       );
 
-      // Transform the perplexityai package response to our format
+      // Transform the Perplexity API response to our format
       const transformedResults = this.transformSearchResponse(searchResponse, searchConfig.maxResults || 5);
 
       return {
@@ -95,19 +94,19 @@ export class PerplexitySearchEngine {
   private transformSearchResponse(searchResponse: any, maxResults: number): SearchResult[] {
     let results: SearchResult[] = [];
 
-    if (searchResponse.sources && Array.isArray(searchResponse.sources)) {
-      results = searchResponse.sources.map((source: any) => ({
-        title: source.name || 'Untitled',
-        url: source.url || '',
-        snippet: searchResponse.detailed || searchResponse.concise || '',
-        date: undefined,
+    if (searchResponse.results && Array.isArray(searchResponse.results)) {
+      results = searchResponse.results.map((result: any) => ({
+        title: result.title || 'Untitled',
+        url: result.url || '',
+        snippet: result.snippet || '',
+        date: result.date || undefined,
       }));
     } else {
-      // If no sources, create a single result with the text content
+      // If no results, create a single result with basic info
       results = [{
         title: 'Search Result',
         url: 'https://www.perplexity.ai/',
-        snippet: searchResponse.detailed || searchResponse.concise || 'No content available',
+        snippet: 'No content available',
         date: undefined,
       }];
     }
