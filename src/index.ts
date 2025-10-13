@@ -40,14 +40,12 @@ export class PerplexitySearchTool {
 
     this.client = new Perplexity({ apiKey });
     this.workspace = new WorkspaceSandbox(workspacePath);
-    
-    // Initialize resilience patterns
+
     const resilienceConfig = options.resilienceProfile && options.resilienceProfile !== 'custom'
       ? DEFAULT_CONFIGS[options.resilienceProfile]
       : options.resilienceConfig || DEFAULT_CONFIGS.balanced;
     this.resilience = new ResilienceManager(resilienceConfig);
-    
-    // Initialize monitoring
+
     this.logger = createLogger({
       component: 'PerplexitySearchTool',
       workspace: workspacePath,
@@ -68,7 +66,6 @@ export class PerplexitySearchTool {
     const traceLogger = this.logger.withContext({ taskId: id });
     
     try {
-      // Validate input against schema
       const validatedInput = SearchInputV1Schema.parse(input);
       
       traceLogger.info('Starting search task', {
@@ -76,8 +73,7 @@ export class PerplexitySearchTool {
         maxResults: validatedInput.args.maxResults,
         country: validatedInput.args.country,
       });
-      
-      // Set up timeout
+
       const timeoutMs = validatedInput.options?.timeoutMs || 30000;
       const controller = new AbortController();
       
@@ -103,8 +99,7 @@ export class PerplexitySearchTool {
         clearTimeout(timeoutId);
         
         const duration = Date.now() - startTime;
-        
-        // Record metrics
+
         this.metrics.recordMetric('search_duration', duration, 'ms', {
           query: validatedInput.args.query,
           success: 'true',
@@ -135,8 +130,7 @@ export class PerplexitySearchTool {
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-      
-      // Record error metrics
+
       this.metrics.incrementCounter('search_requests_total', 1, { 
         status: 'error',
         errorType: this.getErrorCode(error),
@@ -171,7 +165,6 @@ export class PerplexitySearchTool {
     const startTime = Date.now();
 
     try {
-      // Basic batch validation - validate structure but not individual requests
       const basicBatchSchema = BatchSearchInputV1Schema.omit({ requests: true }).extend({
         requests: z.array(z.any()).min(1).max(100), // Accept any requests, validate individually
       });
@@ -180,7 +173,6 @@ export class PerplexitySearchTool {
       const concurrency = validatedBatch.options?.concurrency || 5;
       const pool = new BoundedConcurrencyPool(concurrency);
 
-      // Create enhanced inputs with default IDs
       const enhancedInputs = validatedBatch.requests.map((req, index) => ({
         ...req,
         id: req.id || randomUUID(),
@@ -192,11 +184,9 @@ export class PerplexitySearchTool {
 
       const results = await pool.execute(enhancedInputs, async (input) => {
         try {
-          // Validate each request individually
           const validatedRequest = SearchInputV1Schema.parse(input);
           return await this.runTask(validatedRequest, signal);
         } catch (error) {
-          // If validation fails, return a failed result for this request
           return {
             id: input.id || randomUUID(),
             ok: false,
@@ -253,7 +243,6 @@ export class PerplexitySearchTool {
 
   private async performSearch(query: SearchQuery, signal: AbortSignal): Promise<SearchResult[]> {
     try {
-      // Use the official Perplexity API
       const searchParameters: any = {
         query: query.query,
         max_results: query.maxResults || 5,
@@ -265,7 +254,6 @@ export class PerplexitySearchTool {
 
       const searchResponse = await this.client.search.create(searchParameters, { signal });
 
-      // Transform the API response to our SearchResult format
       if (searchResponse.results && Array.isArray(searchResponse.results)) {
         return searchResponse.results.map((result: any) => ({
           title: result.title || 'Untitled',
@@ -275,7 +263,6 @@ export class PerplexitySearchTool {
         }));
       }
 
-      // If no results, return a single result with basic info
       return [{
         title: 'Search Result',
         url: 'https://www.perplexity.ai/',
@@ -283,7 +270,6 @@ export class PerplexitySearchTool {
         date: undefined,
       }];
     } catch (error) {
-      // Transform API errors to our error format
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('Search request timed out');
       }
@@ -303,7 +289,6 @@ export class PerplexitySearchTool {
     return ERROR_CODES.API_ERROR;
   }
 
-  // Event logging utility
   createEvent(level: EventV1['level'], event: string, id?: string, data?: unknown): EventV1 {
     return {
       time: new Date().toISOString(),
@@ -314,7 +299,6 @@ export class PerplexitySearchTool {
     };
   }
 
-  // Health and metrics methods
   getHealthStatus(): {
     healthy: boolean;
     apiKeyPresent: boolean;
@@ -351,12 +335,10 @@ export class PerplexitySearchTool {
     this.metrics.reset();
   }
 
-  // Reset circuit breaker for testing
   resetCircuitBreaker(): void {
     this.resilience.resetCircuitBreaker();
   }
 
-  // Method to register health checks
   registerHealthChecks(healthChecker: any): void {
     healthChecker.registerCheck('api_key', async () => {
       return !!(process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY);
@@ -372,13 +354,11 @@ export class PerplexitySearchTool {
 
     healthChecker.registerCheck('resilience', async () => {
       const stats = this.resilience.getStats();
-      // Consider unhealthy if circuit breaker is open
       return stats.circuitBreaker.state !== 'OPEN';
     });
   }
 }
 
-// Re-export schemas for external use
 export {
   SearchInputV1Schema,
   BatchSearchInputV1Schema,

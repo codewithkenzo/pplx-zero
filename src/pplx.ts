@@ -61,7 +61,6 @@ export class WebScoutAgent {
       let searchResults: SearchResult[] = [];
 
       if (config.mode === 'multi' && request.query.includes(',')) {
-        // Multi-query search
         const queries = request.query.split(',').map(q => q.trim()).filter(q => q.length > 0);
         
         searchResults = await this.multiSearch(queries, {
@@ -71,7 +70,6 @@ export class WebScoutAgent {
           concurrency: config.concurrency || 3,
         });
       } else {
-        // Single query search
         const result = await search(request.query, {
           maxResults,
           country: request.country,
@@ -121,8 +119,7 @@ export class WebScoutAgent {
           error instanceof Error ? error : new Error(String(error)),
           { query }
         );
-        
-        // Continue with other queries even if one fails
+
         results.push({
           query,
           results: [],
@@ -147,12 +144,10 @@ export class WebScoutAgent {
     this.logger.info('Starting competitive analysis', { topics });
 
     const analysisResults = await this.deepScout(topics, config);
-    
-    // Aggregate insights across all topics
+
     const allSources = analysisResults.flatMap(r => r.sources);
     const allInsights = analysisResults.flatMap(r => r.insights);
-    
-    // Extract common themes and patterns
+
     const commonThemes = this.extractCommonThemes(analysisResults);
     const recommendations = this.generateRecommendations(analysisResults, commonThemes);
 
@@ -243,7 +238,6 @@ export class WebScoutAgent {
       return insights;
     }
 
-    // Analyze result patterns
     const domains = results.map(r => new URL(r.url).hostname);
     const uniqueDomains = [...new Set(domains)];
     
@@ -253,7 +247,6 @@ export class WebScoutAgent {
       insights.push(`All results from ${uniqueDomains[0]} - consider broader search terms`);
     }
 
-    // Check for recency
     const currentYear = new Date().getFullYear();
     const recentResults = results.filter(r => {
       if (r.date) {
@@ -267,7 +260,6 @@ export class WebScoutAgent {
       insights.push(`${recentResults.length} results are from the current or previous year`);
     }
 
-    // Content analysis
     const titles = results.map(r => r.title.toLowerCase());
     const hasTutorials = titles.some(t => t.includes('tutorial') || t.includes('guide') || t.includes('how to'));
     const hasNews = titles.some(t => t.includes('news') || t.includes('update') || t.includes('announcement'));
@@ -292,8 +284,7 @@ export class WebScoutAgent {
   private extractCommonThemes(results: ScoutResult[]): string[] {
     const allTitles = results.flatMap(r => r.results.map(res => res.title.toLowerCase()));
     const themes: string[] = [];
-    
-    // Look for common keywords
+  
     const keywords = ['ai', 'machine learning', 'javascript', 'python', 'react', 'vue', 'angular', 'node', 'typescript', 'security', 'performance', 'api'];
     
     for (const keyword of keywords) {
@@ -332,9 +323,7 @@ export class WebScoutAgent {
   private extractTrends(results: ScoutResult[]): string[] {
     const trends: string[] = [];
     const allTitles = results.flatMap(r => r.results.map(res => res.title.toLowerCase()));
-    
-    // Look for trend indicators
-    const trendIndicators = ['trend', 'growth', 'adoption', 'popularity', 'emerging', 'declining', 'rising', 'future'];
+      const trendIndicators = ['trend', 'growth', 'adoption', 'popularity', 'emerging', 'declining', 'rising', 'future'];
     
     for (const indicator of trendIndicators) {
       const matchingTitles = allTitles.filter(title => title.includes(indicator));
@@ -350,8 +339,7 @@ export class WebScoutAgent {
 // CLI interface for the web scout agent
 if (import.meta.main) {
   const scout = new WebScoutAgent();
-  
-  // Parse command line arguments
+
   const args = process.argv.slice(2);
   const query = args[0];
   
@@ -389,5 +377,3 @@ if (import.meta.main) {
       process.exit(1);
     });
 }
-
-// Exports already handled by interface and class declarations above

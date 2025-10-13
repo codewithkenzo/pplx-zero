@@ -46,7 +46,6 @@ export class PerplexitySearchEngine {
         abortSignal
       );
 
-      // Transform the Perplexity API response to our format
       const transformedResults = this.transformSearchResponse(searchResponse, searchConfig.maxResults || 5);
 
       return {
@@ -102,7 +101,6 @@ export class PerplexitySearchEngine {
         date: result.date || undefined,
       }));
     } else {
-      // If no results, create a single result with basic info
       results = [{
         title: 'Search Result',
         url: 'https://www.perplexity.ai/',
@@ -179,7 +177,6 @@ export class PerplexitySearchEngine {
       }
     };
 
-    // Create concurrent workers
     const workerPromises = semaphore.map(async () => {
       while (!abortSignal.aborted && queryIndex < queryList.length) {
         await executeNextQuery();
@@ -188,7 +185,6 @@ export class PerplexitySearchEngine {
 
     await Promise.all(workerPromises);
 
-    // Return results in original query order
     return results.sort((resultA, resultB) => {
       const indexA = queryList.indexOf(resultA.query);
       const indexB = queryList.indexOf(resultB.query);
@@ -460,15 +456,13 @@ export async function validateApiKey(apiKey?: string): Promise<{
   error?: string;
 }> {
   try {
-    // If API key is provided, use it temporarily
     const originalKey = process.env.PERPLEXITY_API_KEY;
     if (apiKey) {
       process.env.PERPLEXITY_API_KEY = apiKey;
     }
 
     const tool = new PerplexitySearchTool();
-    
-    // Try a simple search to validate the key
+
     const result = await tool.runTask({
       op: 'search',
       args: {
@@ -480,7 +474,6 @@ export async function validateApiKey(apiKey?: string): Promise<{
       },
     });
 
-    // Restore original key
     if (apiKey) {
       process.env.PERPLEXITY_API_KEY = originalKey;
     }
@@ -490,7 +483,6 @@ export async function validateApiKey(apiKey?: string): Promise<{
       error: result.ok ? undefined : result.error?.message,
     };
   } catch (error) {
-    // Restore original key in case of error
     if (apiKey) {
       process.env.PERPLEXITY_API_KEY = process.env.PERPLEXITY_AI_API_KEY;
     }

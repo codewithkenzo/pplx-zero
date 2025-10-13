@@ -9,7 +9,6 @@ import { type EventV1, type BatchSearchInputV1 } from './schema.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Define CLI configuration
 interface CliOptions {
   input?: string;
   stdin?: boolean;
@@ -27,7 +26,6 @@ interface ParsedArgs {
   positionals: string[];
 }
 
-// Parse CLI arguments
 const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = parseArgs({
   args: process.argv.slice(2),
   options: {
@@ -44,7 +42,6 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
   allowPositionals: true,
 }) as ParsedArgs;
 
-// Show help
 if (cliOptions.help) {
   console.error(`
 Perplexity Search Tool
@@ -82,14 +79,12 @@ EXAMPLES:
   process.exit(0);
 }
 
-// Show version
 if (cliOptions.version) {
   const packageInfo = await import('../package.json', { assert: { type: 'json' } });
   console.error(`pplx v${packageInfo.default.version}`);
   process.exit(0);
 }
 
-// Utility functions
 function logEvent(event: EventV1): void {
   console.error(JSON.stringify(event));
 }
@@ -146,7 +141,6 @@ async function readJsonlFromStdin(): Promise<BatchSearchInputV1> {
   };
 }
 
-// Constants for validation
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 20;
 const MIN_TIMEOUT = 1000;
@@ -154,7 +148,6 @@ const MAX_TIMEOUT = 300000;
 const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT = 30000;
 
-// Validate and parse numeric arguments
 function parseNumericArgument(
   value: string | undefined,
   defaultValue: number,
@@ -172,12 +165,10 @@ function parseNumericArgument(
   return parsedValue;
 }
 
-// Main execution
 async function main(): Promise<void> {
   const executionStartTime = Date.now();
 
   try {
-    // Parse and validate CLI arguments
     const maxConcurrency = parseNumericArgument(
       cliOptions.concurrency,
       DEFAULT_CONCURRENCY,
@@ -198,12 +189,10 @@ async function main(): Promise<void> {
     const outputFormat = cliOptions.format as 'json' | 'jsonl';
     const isDryRunMode = cliOptions['dry-run'];
 
-    // Validate output format
     if (!['json', 'jsonl'].includes(outputFormat)) {
       throw new Error('Format must be json or jsonl');
     }
 
-    // Initialize search tool
     const searchTool = new PerplexitySearchTool(workspaceDirectory);
 
     logEvent({
@@ -222,7 +211,6 @@ async function main(): Promise<void> {
     let batchSearchInput: BatchSearchInputV1;
     let inputSourceType: string;
 
-    // Determine input source
     if (cliOptions.stdin) {
       batchSearchInput = await readJsonlFromStdin();
       inputSourceType = 'stdin';
@@ -230,7 +218,6 @@ async function main(): Promise<void> {
       batchSearchInput = await readJsonFile(cliOptions.input) as BatchSearchInputV1;
       inputSourceType = cliOptions.input;
     } else if (commandLineQueries.length > 0) {
-      // Single query from command line
       const combinedQuery = commandLineQueries.join(' ');
       batchSearchInput = {
         version: '1.0.0',
@@ -257,7 +244,6 @@ async function main(): Promise<void> {
       }
     });
 
-    // Merge global options with batch input options
     batchSearchInput.options = {
       concurrency: maxConcurrency,
       timeoutMs: requestTimeout,
@@ -266,7 +252,6 @@ async function main(): Promise<void> {
       ...batchSearchInput.options,
     };
 
-    // Handle dry run mode
     if (isDryRunMode) {
       logEvent({
         time: new Date().toISOString(),
@@ -284,7 +269,6 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Execute search
     logEvent({
       time: new Date().toISOString(),
       level: 'info',
@@ -305,18 +289,14 @@ async function main(): Promise<void> {
       }
     });
 
-    // Output results in requested format
     if (outputFormat === 'jsonl') {
-      // Output each result as a separate JSON line
       for (const searchResult of searchResults.results) {
         console.log(JSON.stringify(searchResult));
       }
     } else {
-      // Output as a single JSON object
       console.log(JSON.stringify(searchResults, null, 2));
     }
 
-    // Exit with appropriate code
     process.exit(searchResults.ok ? 0 : 1);
 
   } catch (error) {
@@ -335,7 +315,6 @@ async function main(): Promise<void> {
       }
     });
 
-    // Output error envelope
     console.log(JSON.stringify({
       ok: false,
       error: {
@@ -350,7 +329,6 @@ async function main(): Promise<void> {
   }
 }
 
-// Handle termination signals
 process.on('SIGINT', () => {
   logEvent({
     time: new Date().toISOString(),
@@ -371,7 +349,6 @@ process.on('SIGTERM', () => {
   process.exit(143);
 });
 
-// Run main function
 main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
