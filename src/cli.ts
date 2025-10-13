@@ -44,7 +44,7 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
 
 if (cliOptions.help) {
   console.error(`
-Perplexity Search Tool
+PPLX-Zero - Minimal, fast Perplexity AI search CLI
 
 USAGE:
   pplx [OPTIONS] [QUERY...]

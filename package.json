@@ -1,7 +1,7 @@
 {
-  "name": "perplexity-fusion-search",
+  "name": "pplx-zero",
   "version": "1.0.0",
-  "description": "Production-ready Perplexity AI search agent with intelligent web scouting capabilities",
+  "description": "PPLX-Zero: Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -36,16 +36,22 @@
     "bun": ">=1.0.0"
   },
   "keywords": [
+    "pplx-zero",
     "perplexity",
     "search",
     "ai",
     "cli",
+    "command-line",
     "tool",
     "typescript",
     "bun",
-    "api"
+    "api",
+    "minimal",
+    "fast",
+    "productivity",
+    "zero-config"
   ],
-  "author": "Tool Generator",
+  "author": "Kenzo",
   "license": "MIT",
   "files": [
     "dist",
