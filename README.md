@@ -1,30 +1,43 @@
-# Perplexity Search Tool for OpenCode
+# Perplexity Search Tool
 
-Production-ready TypeScript implementation of Perplexity AI search integration for OpenCode, built with Bun runtime and comprehensive error handling.
+Production-ready TypeScript implementation of Perplexity AI search integration, built with Bun runtime and comprehensive error handling. Features intelligent web scouting capabilities with concurrent batch processing and real-time streaming.
 
 ## Features
 
-- **Dual Search Modes**: Single query and batch multi-query support
-- **Bounded Concurrency**: Configurable concurrent execution with order preservation
+- **Batch & Single Query Support**: Execute single searches or process multiple queries concurrently
+- **Configurable Concurrency**: Control concurrent execution with built-in rate limiting
 - **JSONL Streaming**: Real-time progress updates via stderr streaming events
 - **Zod Validation**: Strict input/output schema validation with type safety
-- **AbortController Support**: Cancellable operations with graceful shutdown
 - **Error Recovery**: Comprehensive error classification and recovery mechanisms
 - **Cross-Platform**: Bun runtime with native shell integration
-- **OpenCode Compatible**: Full tool contract compliance for OpenCode integration
+- **Dry Run Mode**: Validate input without executing searches
+- **Multiple Output Formats**: JSON and JSONL output support
 
 ## Installation
+
+### Local Development
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd perplexity-opencode-tool
+cd perplexity-droid-tool
 
 # Install dependencies
 bun install
 
 # Build the tool
 bun run build
+```
+
+### Global Installation
+
+```bash
+# Install globally for system-wide access
+npm config set prefix ~/.local
+npm install -g .
+
+# Tool is now available as:
+pplx --help
 ```
 
 ## Environment Setup
@@ -47,63 +60,100 @@ export PERPLEXITY_AI_API_KEY="your-alternative-api-key"
 
 ```bash
 # Basic single query
-perplexity-search search -m single -q "latest AI developments"
-
-# With country and result limits
-perplexity-search search -m single -q "local news" -c US -r 10
-
-# Text format output
-perplexity-search search -m single -q "machine learning" -f text
-```
-
-#### Multi-Query Search
-
-```bash
-# Multiple queries with comma separation
-perplexity-search search -m multi -Q "AI trends, machine learning, neural networks"
+pplx "latest AI developments"
 
 # With custom concurrency and timeout
-perplexity-search search -m multi -Q "topic1, topic2, topic3" -C 5 -t 60000
+pplx --concurrency 3 --timeout 45000 "machine learning trends"
+
+# JSONL output format
+pplx --format jsonl "Python programming"
+
+# Dry run validation
+pplx --dry-run "test query"
 ```
 
-#### API Key Validation
+#### Batch Search from File
 
 ```bash
-# Validate environment API key
-perplexity-search validate
+# Process multiple queries from JSON file
+pplx --input queries.json
 
-# Validate with custom API key
-perplexity-search validate -k "your-api-key"
+# High concurrency batch processing
+pplx --input queries.json --concurrency 10 --timeout 60000
+
+# JSONL output for streaming results
+pplx --format jsonl --input queries.json
+```
+
+#### Streaming from Stdin
+
+```bash
+# Process JSONL requests from stdin
+cat queries.jsonl | pplx --stdin
+
+# With custom settings
+cat queries.jsonl | pplx --stdin --concurrency 5 --format jsonl
 ```
 
 ### Programmatic Usage
 
 ```typescript
-import { PerplexitySearchEngine, SearchConfig } from "./src/index.js";
+import { PerplexitySearchTool } from "./src/index.js";
 
-const engine = new PerplexitySearchEngine(process.env.PERPLEXITY_API_KEY!);
+const tool = new PerplexitySearchTool();
 
-// Single query
-const singleConfig: SearchConfig = {
-  mode: "single",
-  query: "latest AI trends",
-  maxResults: 5,
-  country: "US",
+// Single query batch input
+const singleInput = {
+  version: "1.0.0",
+  requests: [{
+    op: "search",
+    args: {
+      query: "latest AI trends",
+      maxResults: 5,
+    },
+  }],
+  options: {
+    concurrency: 5,
+    timeoutMs: 30000,
+  },
 };
 
-const singleResult = await engine.search(singleConfig);
+const singleResult = await tool.runBatch(singleInput);
 console.log(singleResult);
 
-// Multi-query with concurrency
-const multiConfig: SearchConfig = {
-  mode: "multi",
-  queries: ["AI trends", "machine learning", "neural networks"],
-  maxResults: 3,
-  concurrency: 2,
-  timeout: 30000,
+// Multi-query batch input
+const multiInput = {
+  version: "1.0.0",
+  requests: [
+    {
+      op: "search",
+      args: {
+        query: "AI trends",
+        maxResults: 3,
+      },
+    },
+    {
+      op: "search",
+      args: {
+        query: "machine learning",
+        maxResults: 3,
+      },
+    },
+    {
+      op: "search",
+      args: {
+        query: "neural networks",
+        maxResults: 3,
+      },
+    },
+  ],
+  options: {
+    concurrency: 2,
+    timeoutMs: 30000,
+  },
 };
 
-const multiResult = await engine.search(multiConfig);
+const multiResult = await tool.runBatch(multiInput);
 console.log(multiResult);
 ```
 
@@ -211,13 +261,38 @@ enum ErrorCode {
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `mode` | `single\|multi` | `single` | - | Search operation mode |
-| `query` | `string` | - | - | Single search query (single mode) |
-| `queries` | `string[]` | - | 1-50 items | Multiple search queries (multi mode) |
-| `maxResults` | `number` | `5` | 1-50 | Maximum results per query |
-| `country` | `string` | - | 2-char ISO | Country code for location-based search |
-| `concurrency` | `number` | `3` | 1-10 | Concurrent query limit (multi mode) |
-| `timeout` | `number` | `30000` | 1000-300000 | Request timeout in milliseconds |
+| `-i, --input` | `string` | - | - | Read batch requests from JSON file |
+| `-s, --stdin` | `boolean` | `false` | - | Read JSONL requests from stdin |
+| `-c, --concurrency` | `number` | `5` | 1-20 | Max concurrent requests |
+| `-t, --timeout` | `number` | `30000` | 1000-300000 | Request timeout in milliseconds |
+| `-w, --workspace` | `string` | - | - | Workspace directory for sandboxing |
+| `-f, --format` | `json\|jsonl` | `json` | - | Output format |
+| `-d, --dry-run` | `boolean` | `false` | - | Validate input without executing searches |
+| `-v, --version` | `boolean` | - | - | Show version |
+| `-h, --help` | `boolean` | - | - | Show help |
+
+### Batch Input Format
+
+For file-based input, use JSON format:
+
+```json
+{
+  "version": "1.0.0",
+  "requests": [
+    {
+      "op": "search",
+      "args": {
+        "query": "AI trends",
+        "maxResults": 5
+      }
+    }
+  ],
+  "options": {
+    "concurrency": 3,
+    "timeoutMs": 45000
+  }
+}
+```
 
 ## OpenCode Integration
 

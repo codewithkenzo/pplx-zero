@@ -33,7 +33,7 @@ if (values.help) {
 Perplexity Search Tool - OpenCode Integration
 
 USAGE:
-  perplexity-tool [OPTIONS] [QUERY...]
+  pplx [OPTIONS] [QUERY...]
 
 OPTIONS:
   -i, --input <file>     Read batch requests from JSON file
@@ -48,19 +48,19 @@ OPTIONS:
 
 EXAMPLES:
   # Single query
-  perplexity-tool "latest AI developments"
+  pplx "latest AI developments"
 
   # Batch from file
-  perplexity-tool --input queries.json
+  pplx --input queries.json
 
   # Streaming from stdin
-  cat queries.jsonl | perplexity-tool --stdin
+  cat queries.jsonl | pplx --stdin
 
   # JSONL output for streaming
-  perplexity-tool --format jsonl --input queries.json
+  pplx --format jsonl --input queries.json
 
   # High concurrency batch
-  perplexity-tool --concurrency 10 --timeout 60000 --input queries.json
+  pplx --concurrency 10 --timeout 60000 --input queries.json
 `);
   process.exit(0);
 }
@@ -68,7 +68,7 @@ EXAMPLES:
 // Show version
 if (values.version) {
   const packageJson = await import('../package.json', { assert: { type: 'json' } });
-  console.error(`perplexity-tool v${packageJson.default.version}`);
+  console.error(`pplx v${packageJson.default.version}`);
   process.exit(0);
 }
 
