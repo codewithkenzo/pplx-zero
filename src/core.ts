@@ -279,7 +279,7 @@ export class PerplexitySearchEngine {
       totalQueries: queryResults.length,
       totalResults,
       executionTime,
-      mode: 'search',
+      mode: queryResults.length === 1 ? 'single' : 'multi',
     };
   }
 

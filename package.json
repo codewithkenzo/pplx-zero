@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "bun run src/cli.ts",
-    "build": "bun build src/cli.ts --outfile=dist/cli.js --target=node",
+    "build": "rm -rf dist && bun build src/cli.ts --target node --outdir dist",
     "build:binary": "bun build --compile src/cli.ts --outfile=dist/pplx",
     "test": "bun test",
     "test:watch": "bun test --watch",

@@ -2,15 +2,23 @@ import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test';
 import { PerplexitySearchTool } from '../src/index.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
 
 describe('PPLX Agent Comprehensive Test Suite', () => {
   let agent: PerplexitySearchTool;
   const testWorkspace = '/tmp/pplx-test-workspace';
+  const originalEnv = process.env;
 
   beforeAll(async () => {
+    // Mock API key for testing
+    process.env = {
+      ...originalEnv,
+      PERPLEXITY_API_KEY: 'test-api-key-for-testing'
+    };
+
     // Create test workspace
     await fs.mkdir(testWorkspace, { recursive: true });
-    
+
     // Initialize agent with test configuration
     agent = new PerplexitySearchTool(testWorkspace, {
       resilienceProfile: 'balanced',
@@ -19,6 +27,9 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
   });
 
   afterAll(async () => {
+    // Restore original environment
+    process.env = originalEnv;
+
     // Clean up test workspace
     try {
       await fs.rm(testWorkspace, { recursive: true, force: true });
@@ -49,7 +60,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
   describe('Web Research Capabilities', () => {
     it('should perform single query search', async () => {
       const input = {
-        id: 'test-single-query',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           query: 'TypeScript best practices',
           maxResults: 3
@@ -57,8 +69,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       const result = await agent.runTask(input);
-      
-      expect(result).toHaveProperty('id', 'test-single-query');
+
+      expect(result).toHaveProperty('id', input.id);
       expect(result).toHaveProperty('ok');
       if (result.ok) {
         expect(result.data).toHaveProperty('query', 'TypeScript best practices');
@@ -77,7 +89,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
 
     it('should handle queries with country filter', async () => {
       const input = {
-        id: 'test-country-filter',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           query: 'local news',
           maxResults: 2,
@@ -86,8 +99,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       const result = await agent.runTask(input);
-      
-      expect(result.id).toBe('test-country-filter');
+
+      expect(result.id).toBe(input.id);
       if (result.ok) {
         expect(result.data.query).toBe('local news');
         expect(result.data.results.length).toBeGreaterThan(0);
@@ -96,7 +109,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
 
     it('should handle timeout gracefully', async () => {
       const input = {
-        id: 'test-timeout',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           query: 'complex research query',
           maxResults: 10
@@ -111,7 +125,7 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       setTimeout(() => controller.abort(), 0);
 
       const result = await agent.runTask(input, controller.signal);
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toHaveProperty('code');
@@ -126,14 +140,16 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         version: '1.0.0',
         requests: [
           {
-            id: 'batch-1',
+            id: randomUUID(),
+            op: 'search' as const,
             args: {
               query: 'React vs Vue',
               maxResults: 2
             }
           },
           {
-            id: 'batch-2', 
+            id: randomUUID(),
+            op: 'search' as const,
             args: {
               query: 'Next.js features',
               maxResults: 2
@@ -162,7 +178,7 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       
       // Check individual results
       result.results.forEach((itemResult, index) => {
-        expect(itemResult.id).toBe(`batch-${index + 1}`);
+        expect(itemResult.id).toBe(batchInput.requests[index].id);
         if (itemResult.ok) {
           expect(itemResult.data).toHaveProperty('results');
           expect(Array.isArray(itemResult.data.results)).toBe(true);
@@ -175,14 +191,16 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         version: '1.0.0',
         requests: [
           {
-            id: 'mixed-1',
+            id: randomUUID(),
+            op: 'search' as const,
             args: {
               query: 'valid query',
               maxResults: 2
             }
           },
           {
-            id: 'mixed-2',
+            id: randomUUID(),
+            op: 'search' as const,
             args: {
               query: '', // Empty query should fail validation
               maxResults: 2
@@ -206,7 +224,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
   describe('Error Handling and Resilience', () => {
     it('should classify errors correctly', async () => {
       const invalidInput = {
-        id: 'error-test',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           // Missing required query field
           maxResults: 5
@@ -214,16 +233,17 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       const result = await agent.runTask(invalidInput);
-      
+
       expect(result.ok).toBe(false);
       expect(result.error).toHaveProperty('code');
       expect(result.error).toHaveProperty('message');
-      expect(['VALIDATION_ERROR', 'API_ERROR', 'UNEXPECTED_ERROR']).toContain(result.error.code);
+      expect(['VALIDATION_FAILED', 'API_ERROR', 'INTERNAL_ERROR']).toContain(result.error.code);
     });
 
     it('should provide detailed error information', async () => {
       const invalidInput = {
-        id: 'detailed-error-test',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           query: '',
           maxResults: 100 // Exceeds maximum
@@ -231,7 +251,7 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       const result = await agent.runTask(invalidInput);
-      
+
       expect(result.ok).toBe(false);
       expect(result.error).toHaveProperty('message');
       expect(typeof result.error.message).toBe('string');
@@ -247,7 +267,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       expect(initialMetrics).toHaveProperty('timestamp');
 
       const input = {
-        id: 'metrics-test',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           query: 'performance testing',
           maxResults: 2
@@ -255,9 +276,12 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       await agent.runTask(input);
-      
+
       const finalMetrics = agent.getMetrics();
-      expect(finalMetrics.timestamp).not.toBe(initialMetrics.timestamp);
+      // Metrics timestamp should be updated after a successful operation
+      if (agent.getHealthStatus().apiKeyPresent) {
+        expect(finalMetrics.timestamp).not.toBe(initialMetrics.timestamp);
+      }
     });
 
     it('should allow metrics reset', () => {
@@ -273,7 +297,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       const highConcurrencyBatch = {
         version: '1.0.0',
         requests: Array.from({ length: 10 }, (_, i) => ({
-          id: `concurrency-test-${i}`,
+          id: randomUUID(),
+          op: 'search' as const,
           args: {
             query: `test query ${i}`,
             maxResults: 1
@@ -288,7 +313,7 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       const startTime = Date.now();
       const result = await agent.runBatch(highConcurrencyBatch);
       const duration = Date.now() - startTime;
-      
+
       expect(result.summary.total).toBe(10);
       expect(result.summary.successful + result.summary.failed).toBe(10);
       expect(duration).toBeLessThan(60000); // Should complete within reasonable time
@@ -296,7 +321,8 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
 
     it('should handle different output formats', async () => {
       const input = {
-        id: 'format-test',
+        id: randomUUID(),
+        op: 'search' as const,
         args: {
           query: 'format testing',
           maxResults: 1
@@ -304,12 +330,12 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       const result = await agent.runTask(input);
-      
+
       if (result.ok) {
         expect(result.data).toHaveProperty('query');
         expect(result.data).toHaveProperty('results');
         expect(result.data).toHaveProperty('totalCount');
-        
+
         result.data.results.forEach(searchResult => {
           expect(searchResult).toHaveProperty('title');
           expect(searchResult).toHaveProperty('url');

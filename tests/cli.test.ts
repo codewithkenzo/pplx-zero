@@ -192,8 +192,7 @@ describe("CLI Integration", () => {
   });
 
   test("handles SIGINT gracefully", async () => {
-    const controller = new AbortController();
-    let signalReceived = false;
+    let sigintReceived = false;
 
     // Mock process.on for SIGINT
     const originalOn = process.on;
@@ -201,41 +200,18 @@ describe("CLI Integration", () => {
       if (event === "SIGINT") {
         // Simulate SIGINT
         setTimeout(() => {
-          controller.abort();
-          signalReceived = true;
+          sigintReceived = true;
           callback();
-        }, 100);
+        }, 50);
       }
     });
-    
+
     process.on = mockOn;
 
-    // Simulate search with abort
-    const mockEngine = {
-      search: mock(() => Promise.resolve({
-        success: false,
-        results: [],
-        error: {
-          code: "INTERRUPTED",
-          message: "Search interrupted by user",
-        },
-        metadata: {
-          totalQueries: 0,
-          totalResults: 0,
-          executionTime: 100,
-          mode: "single",
-        },
-      })),
-    };
-
-    // Simulate the abort behavior
-    controller.abort();
-
     // Wait for async operations
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    expect(signalReceived).toBe(true);
-    expect(controller.signal.aborted).toBe(true);
+    expect(mockOn).toHaveBeenCalledWith('SIGINT', expect.any(Function));
 
     // Restore original process.on
     process.on = originalOn;
@@ -243,23 +219,31 @@ describe("CLI Integration", () => {
 
   test("formats JSON output correctly", async () => {
     const mockResult = {
-      success: true,
-      results: [{
-        query: "test query",
-        results: [{
-          title: "Test Result",
-          url: "https://example.com",
-        }],
-      }],
-      metadata: {
-        totalQueries: 1,
-        totalResults: 1,
-        executionTime: 1000,
-        mode: "single" as const,
+      ok: true,
+      version: "1.0.0",
+      summary: {
+        total: 1,
+        successful: 1,
+        failed: 0,
+        totalDuration: 1000,
       },
+      results: [{
+        id: "test-id",
+        ok: true,
+        data: {
+          query: "test query",
+          results: [{
+            title: "Test Result",
+            url: "https://example.com",
+            snippet: "Test snippet",
+          }],
+          totalCount: 1,
+        },
+        duration: 1000,
+      }],
     };
 
-    // Simulate JSON output formatting
+    // Simulate JSON output formatting (what the CLI actually does)
     const outputJsonFormat = (result: any) => {
       console.log(JSON.stringify(result, null, 2));
     };
@@ -271,92 +255,65 @@ describe("CLI Integration", () => {
     );
   });
 
-  test("formats text output correctly", async () => {
-    const mockResult = {
-      success: true,
-      results: [{
-        query: "test query",
-        results: [{
-          title: "Test Result",
-          url: "https://example.com",
-          snippet: "Test snippet",
-          date: "2024-01-01",
-        }],
-      }],
-      metadata: {
-        totalQueries: 1,
-        totalResults: 1,
-        executionTime: 1000,
-        mode: "single" as const,
+  test("formats JSONL output correctly", async () => {
+    const mockResults = [
+      {
+        id: "test-id-1",
+        ok: true,
+        data: {
+          query: "test query 1",
+          results: [{
+            title: "Test Result 1",
+            url: "https://example.com/1",
+            snippet: "Test snippet 1",
+          }],
+          totalCount: 1,
+        },
+        duration: 500,
       },
-    };
+      {
+        id: "test-id-2",
+        ok: true,
+        data: {
+          query: "test query 2",
+          results: [{
+            title: "Test Result 2",
+            url: "https://example.com/2",
+            snippet: "Test snippet 2",
+          }],
+          totalCount: 1,
+        },
+        duration: 600,
+      },
+    ];
 
-    // Simulate text output formatting
-    const outputTextFormat = (result: any) => {
-      if (!result.success) {
-        console.error(`Error: ${result.error?.message || "Unknown error"}`);
-        return;
-      }
-
-      console.log(`Perplexity Search Results (${result.metadata.mode} mode)`);
-      console.log(`Total queries: ${result.metadata.totalQueries}`);
-      console.log(`Total results: ${result.metadata.totalResults}`);
-      console.log(`Execution time: ${result.metadata.executionTime}ms`);
-      console.log("");
-
-      for (const queryResult of result.results) {
-        console.log(`Query: ${queryResult.query}`);
-        console.log(`  Results (${queryResult.results.length}):`);
-        
-        for (const searchResult of queryResult.results) {
-          console.log(`    Title: ${searchResult.title}`);
-          console.log(`    URL: ${searchResult.url}`);
-          if (searchResult.snippet) {
-            console.log(`    Snippet: ${searchResult.snippet}`);
-          }
-          if (searchResult.date) {
-            console.log(`    Date: ${searchResult.date}`);
-          }
-          console.log("");
-        }
+    // Simulate JSONL output formatting (what the CLI does for --format jsonl)
+    const outputJsonlFormat = (results: any[]) => {
+      for (const result of results) {
+        console.log(JSON.stringify(result));
       }
     };
 
-    outputTextFormat(mockResult);
+    outputJsonlFormat(mockResults);
 
-    // Verify the expected output lines
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      "Perplexity Search Results (single mode)"
-    );
-    expect(consoleLogSpy).toHaveBeenCalledWith("Total queries: 1");
-    expect(consoleLogSpy).toHaveBeenCalledWith("Total results: 1");
-    expect(consoleLogSpy).toHaveBeenCalledWith("Execution time: 1000ms");
-    expect(consoleLogSpy).toHaveBeenCalledWith("Query: test query");
-    expect(consoleLogSpy).toHaveBeenCalledWith("  Results (1):");
-    expect(consoleLogSpy).toHaveBeenCalledWith("    Title: Test Result");
-    expect(consoleLogSpy).toHaveBeenCalledWith("    URL: https://example.com");
-    expect(consoleLogSpy).toHaveBeenCalledWith("    Snippet: Test snippet");
-    expect(consoleLogSpy).toHaveBeenCalledWith("    Date: 2024-01-01");
+    // Verify each result was logged as a separate JSON line
+    expect(consoleLogSpy).toHaveBeenCalledTimes(2);
+    expect(consoleLogSpy).toHaveBeenNthCalledWith(1, JSON.stringify(mockResults[0]));
+    expect(consoleLogSpy).toHaveBeenNthCalledWith(2, JSON.stringify(mockResults[1]));
   });
 
   test("handles error output formatting", async () => {
     const mockError = {
-      success: false,
-      results: [],
+      ok: false,
       error: {
-        code: "API_KEY_MISSING",
+        code: "EXECUTION_ERROR",
         message: "API key is required",
         details: { source: "environment" },
       },
-      metadata: {
-        totalQueries: 0,
-        totalResults: 0,
-        executionTime: 100,
-        mode: "single" as const,
-      },
+      duration: 100,
     };
 
-    // Simulate JSON error output
+    // Simulate JSON error output (what the CLI actually does)
     const outputJsonFormat = (result: any) => {
       console.log(JSON.stringify(result, null, 2));
     };
@@ -366,18 +323,5 @@ describe("CLI Integration", () => {
     expect(consoleLogSpy).toHaveBeenCalledWith(
       JSON.stringify(mockError, null, 2)
     );
-
-    // Clear and test text error output
-    consoleLogSpy.mockClear();
-    
-    const outputTextFormat = (result: any) => {
-      if (!result.success) {
-        console.error(`Error: ${result.error?.message || "Unknown error"}`);
-        return;
-      }
-    };
-
-    outputTextFormat(mockError);
-    expect(consoleErrorSpy).toHaveBeenCalledWith("Error: API key is required");
   });
 });

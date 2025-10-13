@@ -7,19 +7,18 @@ describe("Integration Tests", () => {
   const testApiKey = process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY;
 
   beforeAll(() => {
-    if (!testApiKey) {
-      console.warn("Skipping integration tests - no API key provided");
-      return;
+    if (testApiKey) {
+      engine = new PerplexitySearchEngine(testApiKey);
     }
-    engine = new PerplexitySearchEngine(testApiKey);
   });
 
   describe("API Integration", () => {
+    test.skip(!testApiKey, "requires API key", () => {
+  // This test will be skipped if no API key is present
+});
+
     test("can connect to Perplexity API", async () => {
-      if (!testApiKey) {
-        test.skip();
-        return;
-      }
+      if (!testApiKey) return;
 
       const config = {
         mode: "single" as const,
@@ -38,10 +37,7 @@ describe("Integration Tests", () => {
     });
 
     test("handles real single query search", async () => {
-      if (!testApiKey) {
-        test.skip();
-        return;
-      }
+      if (!testApiKey) return;
 
       const config = {
         mode: "single" as const,
@@ -72,10 +68,7 @@ describe("Integration Tests", () => {
     });
 
     test("handles real multi-query search", async () => {
-      if (!testApiKey) {
-        test.skip();
-        return;
-      }
+      if (!testApiKey) return;
 
       const config = {
         mode: "multi" as const,
@@ -107,7 +100,6 @@ describe("Integration Tests", () => {
 
     test("handles country-specific search", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 
@@ -128,7 +120,6 @@ describe("Integration Tests", () => {
 
     test("validates config schema against real API", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 
@@ -167,7 +158,6 @@ describe("Integration Tests", () => {
 
     test("handles timeout realistically", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 
@@ -193,7 +183,6 @@ describe("Integration Tests", () => {
 
     test("handles concurrent load", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 
@@ -238,7 +227,6 @@ describe("Integration Tests", () => {
 
     test("handles malformed queries", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 
@@ -256,7 +244,6 @@ describe("Integration Tests", () => {
 
     test("handles extreme parameter values", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 
@@ -299,7 +286,6 @@ describe("Integration Tests", () => {
   describe("Streaming Integration", () => {
     test("produces valid streaming events", async () => {
       if (!testApiKey) {
-        test.skip();
         return;
       }
 

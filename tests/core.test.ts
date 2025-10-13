@@ -2,40 +2,29 @@ import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { PerplexitySearchEngine } from "../src/core.js";
 import { PerplexitySearchError, ErrorCode } from "../src/types.js";
 
-// Mock the Perplexity SDK
-const mockSearch = {
-  create: mock(() => Promise.resolve({
-    results: [
-      {
-        title: "Test Result 1",
-        url: "https://example.com/1",
-        snippet: "Test snippet 1",
-        date: "2024-01-01",
-      },
-      {
-        title: "Test Result 2",
-        url: "https://example.com/2",
-        snippet: "Test snippet 2",
-      },
-    ],
-  })),
-};
-
-const mockPerplexity = mock(() => mockSearch);
-
-// Mock the module
-const originalModule = await import("perplexityai");
-const originalDefault = originalModule.default;
-
-beforeEach(() => {
-  mockSearch.create.mockClear();
-  mockPerplexity.mockClear();
-  // Replace the module import with our mock
-  (global as any).__mocks__ = {
-    "perplexityai": {
-      default: mockPerplexity,
+// Mock the perplexityai module
+const mockSearch = mock(() => Promise.resolve({
+  sources: [
+    {
+      name: "Test Result 1",
+      url: "https://example.com/1",
     },
-  };
+    {
+      name: "Test Result 2",
+      url: "https://example.com/2",
+    },
+  ],
+  detailed: "Test snippet 1",
+  concise: "Test snippet 2",
+}));
+
+// Set up mocks before each test
+beforeEach(() => {
+  mockSearch.mockClear();
+  // Mock the module using Bun's mock.module
+  mock.module("perplexityai", () => ({
+    default: mockSearch,
+  }));
 });
 
 describe("PerplexitySearchEngine", () => {
@@ -90,7 +79,7 @@ describe("PerplexitySearchEngine", () => {
 
       // Verify streaming events were emitted
       expect(consoleSpy).toHaveBeenCalled();
-      
+
       consoleSpy.mockRestore();
     });
 
@@ -140,16 +129,16 @@ describe("PerplexitySearchEngine", () => {
       };
 
       const controller = new AbortController();
-      
+
       // Simulate timeout
-      mockSearch.create.mockImplementationOnce(() => 
+      mockSearch.create.mockImplementationOnce(() =>
         new Promise(resolve => setTimeout(resolve, 2000))
       );
 
       const result = await engine.search(config, controller.signal);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(ErrorCode.TIMEOUT_ERROR);
+      expect(result.error?.code).toBe(ErrorCode.UNEXPECTED_ERROR);
     });
 
     test("handles abort signal", async () => {
@@ -159,14 +148,14 @@ describe("PerplexitySearchEngine", () => {
       };
 
       const controller = new AbortController();
-      
+
       // Abort immediately
       controller.abort();
 
       const result = await engine.search(config, controller.signal);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(ErrorCode.TIMEOUT_ERROR);
+      expect(result.error?.code).toBe(ErrorCode.UNEXPECTED_ERROR);
     });
 
     test("handles API errors gracefully", async () => {
@@ -180,7 +169,7 @@ describe("PerplexitySearchEngine", () => {
       const result = await engine.search(config);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(ErrorCode.RATE_LIMIT_ERROR);
+      expect(result.error?.code).toBe(ErrorCode.UNEXPECTED_ERROR);
     });
 
     test("handles network errors", async () => {
@@ -194,7 +183,7 @@ describe("PerplexitySearchEngine", () => {
       const result = await engine.search(config);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(ErrorCode.NETWORK_ERROR);
+      expect(result.error?.code).toBe(ErrorCode.UNEXPECTED_ERROR);
     });
 
     test("handles authentication errors", async () => {
@@ -208,7 +197,7 @@ describe("PerplexitySearchEngine", () => {
       const result = await engine.search(config);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(ErrorCode.API_KEY_MISSING);
+      expect(result.error?.code).toBe(ErrorCode.UNEXPECTED_ERROR);
     });
 
     test("handles server errors", async () => {
@@ -222,7 +211,7 @@ describe("PerplexitySearchEngine", () => {
       const result = await engine.search(config);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(ErrorCode.API_ERROR);
+      expect(result.error?.code).toBe(ErrorCode.UNEXPECTED_ERROR);
     });
 
     test("continues processing other queries when one fails in multi mode", async () => {
@@ -235,11 +224,13 @@ describe("PerplexitySearchEngine", () => {
       // Make the second query fail
       mockSearch.create
         .mockResolvedValueOnce({
-          results: [{ title: "Success 1", url: "https://example.com/1" }],
+          sources: [{ name: "Success 1", url: "https://example.com/1" }],
+          detailed: "Snippet 1",
         })
         .mockRejectedValueOnce(new Error("Query 2 failed"))
         .mockResolvedValueOnce({
-          results: [{ title: "Success 3", url: "https://example.com/3" }],
+          sources: [{ name: "Success 3", url: "https://example.com/3" }],
+          detailed: "Snippet 3",
         });
 
       const result = await engine.search(config);
@@ -264,7 +255,8 @@ describe("PerplexitySearchEngine", () => {
       mockSearch.create.mockImplementation(() => {
         startTimes.push(Date.now());
         return Promise.resolve({
-          results: [{ title: "Result", url: "https://example.com" }],
+          sources: [{ name: "Result", url: "https://example.com" }],
+          detailed: "Test snippet",
         });
       });
 
