@@ -53,11 +53,24 @@ sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/pplx
 
 ### 2️⃣ Setup API Key
 
+**Linux/macOS (Temporary - Current Session):**
 ```bash
 export PERPLEXITY_API_KEY="your-perplexity-api-key"
 # Or use the fallback
 export PERPLEXITY_AI_API_KEY="your-alternative-api-key"
 ```
+
+**Windows (Permanent):**
+```cmd
+# Set permanently for all future sessions
+setx PERPLEXITY_API_KEY "your-perplexity-api-key"
+# Or use the fallback
+setx PERPLEXITY_AI_API_KEY "your-alternative-api-key"
+```
+
+**Get your API key:** https://www.perplexity.ai/account/api/keys
+
+> **Note:** Close and reopen your terminal after setting environment variables to ensure they're loaded properly.
 
 ### 3️⃣ Start Searching
 
