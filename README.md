@@ -3,7 +3,9 @@
 > Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises
 
 [![npm version](https://badge.fury.io/js/pplx-zero.svg)](https://badge.fury.io/js/pplx-zero)
-[![AUR package](https://img.shields.io/aur/version/pplx-zero)](https://aur.archlinux.org/packages/pplx-zero)
+[![AUR package](https://img.shields.io/aur/version/pplx-zero?style=flat-square)](https://aur.archlinux.org/packages/pplx-zero)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white)](https://bun.sh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 PPLX-Zero is a blazing-fast, production-ready TypeScript implementation of Perplexity AI search integration. Built with Bun runtime for maximum performance and zero bloat.
@@ -19,9 +21,9 @@ PPLX-Zero is a blazing-fast, production-ready TypeScript implementation of Perpl
 
 ## Quick Start
 
-### Install
+### 1️⃣ Install
 
-**Package Manager Installation (Recommended)**
+**📦 Package Manager Installation (Recommended)**
 
 ```bash
 # npm (Node.js package manager)
@@ -37,7 +39,7 @@ cd pplx-zero
 makepkg -si
 ```
 
-**Manual Installation**
+**🔨 Manual Installation**
 
 ```bash
 # Clone and build locally
@@ -49,7 +51,7 @@ bun install && bun run build
 sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/pplx
 ```
 
-### Setup API Key
+### 2️⃣ Setup API Key
 
 ```bash
 export PERPLEXITY_API_KEY="your-perplexity-api-key"
@@ -57,7 +59,7 @@ export PERPLEXITY_API_KEY="your-perplexity-api-key"
 export PERPLEXITY_AI_API_KEY="your-alternative-api-key"
 ```
 
-### Start Searching
+### 3️⃣ Start Searching
 
 ```bash
 # Single query (CLI command is 'pplx')
