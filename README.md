@@ -33,8 +33,6 @@ npm install -g pplx-zero
 
 # AUR (Arch Linux)
 yay -S pplx-zero
-# or
-pikaur -S pplx-zero
 # or manual AUR
 git clone https://aur.archlinux.org/pplx-zero.git
 cd pplx-zero
