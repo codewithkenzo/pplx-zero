@@ -2,11 +2,13 @@
 
 > Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises
 
-[![npm version](https://badge.fury.io/js/pplx-zero.svg)](https://badge.fury.io/js/pplx-zero)
-[![AUR package](https://img.shields.io/aur/version/pplx-zero?style=flat-square)](https://aur.archlinux.org/packages/pplx-zero)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white)](https://bun.sh)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://badge.fury.io/js/pplx-zero"><img src="https://badge.fury.io/js/pplx-zero.svg" alt="npm version"></a>
+  <a href="https://aur.archlinux.org/packages/pplx-zero"><img src="https://img.shields.io/aur/version/pplx-zero?style=flat-square" alt="AUR package"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white" alt="Bun"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 PPLX-Zero is a blazing-fast, production-ready TypeScript implementation of Perplexity AI search integration. Built with Bun runtime for maximum performance and zero bloat.
 
