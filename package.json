@@ -1,7 +1,7 @@
 {
   "name": "pplx-zero",
   "version": "1.0.0",
-  "description": "PPLX-Zero: Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises",
+  "description": "Fast Perplexity AI search CLI with multimodal support - minimal setup, maximal results",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -49,10 +49,22 @@
     "minimal",
     "fast",
     "productivity",
-    "zero-config"
+    "zero-config",
+    "multimodal",
+    "attachments",
+    "images",
+    "documents",
+    "sonar",
+    "reasoning",
+    "research",
+    "async"
   ],
   "author": "Kenzo",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codewithkenzo/pplx-zero.git"
+  },
   "files": [
     "dist",
     "README.md",
