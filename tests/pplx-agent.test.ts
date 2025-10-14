@@ -40,21 +40,42 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
       };
 
       class MockPerplexity {
-        search = {
-          create: mock((params: any, options?: { signal?: AbortSignal }) => {
-            // Check for abort signal
-            if (options?.signal?.aborted) {
-              return Promise.reject(new Error("Request aborted"));
-            }
+        chat = {
+          completions: {
+            create: mock(async (params: any) => {
+              // Simulate timeout for very short timeouts
+              if (params.max_results > 5) {
+                throw new Error("Request timeout");
+              }
 
-            // Simulate timeout for very short timeouts
-            if (params.max_results > 5) {
-              return Promise.reject(new Error("Request timeout"));
-            }
-
-            return Promise.resolve(mockData);
-          }),
-          _client: {}
+              return {
+                id: 'mock-response-id',
+                object: 'chat.completion',
+                created: Date.now(),
+                model: params.model || 'sonar',
+                choices: [{
+                  index: 0,
+                  finish_reason: 'stop',
+                  message: {
+                    role: 'assistant',
+                    content: `Mock response for query: ${params.messages?.[1]?.content || 'unknown query'}`
+                  }
+                }],
+                usage: {
+                  prompt_tokens: 50,
+                  completion_tokens: 100,
+                  total_tokens: 150
+                },
+                citations: [],
+                search_results: mockData.results.map(result => ({
+                  title: result.title,
+                  url: result.url,
+                  snippet: result.snippet
+                }))
+              };
+            }),
+            _client: {}
+          }
         };
       }
 
@@ -128,7 +149,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         op: 'search' as const,
         args: {
           query: 'TypeScript best practices',
-          maxResults: 3
+          maxResults: 3,
+          model: 'sonar' as const
+        },
+        options: {
+          async: false
         }
       };
 
@@ -158,7 +183,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         args: {
           query: 'local news',
           maxResults: 2,
-          country: 'US'
+          country: 'US',
+          model: 'sonar' as const
+        },
+        options: {
+          async: false
         }
       };
 
@@ -177,10 +206,12 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         op: 'search' as const,
         args: {
           query: 'complex research query',
-          maxResults: 10
+          maxResults: 10,
+          model: 'sonar' as const
         },
         options: {
-          timeoutMs: 1000 // Valid minimum timeout value
+          timeoutMs: 1000, // Valid minimum timeout value
+          async: false
         }
       };
 
@@ -204,7 +235,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
             op: 'search' as const,
             args: {
               query: 'React vs Vue',
-              maxResults: 2
+              maxResults: 2,
+              model: 'sonar' as const
+            },
+            options: {
+              async: false
             }
           },
           {
@@ -212,7 +247,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
             op: 'search' as const,
             args: {
               query: 'Next.js features',
-              maxResults: 2
+              maxResults: 2,
+              model: 'sonar' as const
+            },
+            options: {
+              async: false
             }
           }
         ],
@@ -255,7 +294,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
             op: 'search' as const,
             args: {
               query: 'valid query',
-              maxResults: 2
+              maxResults: 2,
+              model: 'sonar' as const
+            },
+            options: {
+              async: false
             }
           },
           {
@@ -263,7 +306,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
             op: 'search' as const,
             args: {
               query: '', // Empty query should fail validation
-              maxResults: 2
+              maxResults: 2,
+              model: 'sonar' as const
+            },
+            options: {
+              async: false
             }
           }
         ],
@@ -288,7 +335,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         op: 'search' as const,
         args: {
           // Missing required query field
-          maxResults: 5
+          maxResults: 5,
+          model: 'sonar' as const
+        },
+        options: {
+          async: false
         }
       };
 
@@ -306,7 +357,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         op: 'search' as const,
         args: {
           query: '',
-          maxResults: 100 // Exceeds maximum
+          maxResults: 100, // Exceeds maximum
+          model: 'sonar' as const
+        },
+        options: {
+          async: false
         }
       };
 
@@ -331,7 +386,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         op: 'search' as const,
         args: {
           query: 'performance testing',
-          maxResults: 2
+          maxResults: 2,
+          model: 'sonar' as const
+        },
+        options: {
+          async: false
         }
       };
 
@@ -361,7 +420,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
           op: 'search' as const,
           args: {
             query: `test query ${i}`,
-            maxResults: 1
+            maxResults: 1,
+            model: 'sonar' as const
+          },
+          options: {
+            async: false
           }
         })),
         options: {
@@ -385,7 +448,11 @@ describe('PPLX Agent Comprehensive Test Suite', () => {
         op: 'search' as const,
         args: {
           query: 'format testing',
-          maxResults: 1
+          maxResults: 1,
+          model: 'sonar' as const
+        },
+        options: {
+          async: false
         }
       };
 

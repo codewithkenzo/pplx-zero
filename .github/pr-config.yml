@@ -1,0 +1,266 @@
+name: PR Configuration
+description: Configure PR metadata for breaking changes and CLI refactoring
+title: "Configure PR metadata for breaking change with CLI interface refactoring"
+labels: ["breaking-change", "cli", "enhancement", "bug-fix", "high-priority"]
+milestone: "v1.1.0"
+assignees: ["codewithkenzo"]
+reviewers: ["codewithkenzo"]
+team-reviewers: []
+draft: false
+merge-strategy: "squash"
+auto-merge: false
+delete-branch-on-merge: true
+
+# PR Configuration for Breaking Change - CLI Interface Refactoring
+
+## Repository Analysis Summary
+- **Project**: pplx-zero - Perplexity AI CLI tool
+- **Author**: codewithkenzo (single maintainer)
+- **Current Version**: 1.0.1
+- **Target Version**: v1.1.0 (breaking change)
+- **Repository Size**: Small focused CLI project
+- **Workflow**: Automated npm publishing with comprehensive testing
+
+## Recommended PR Configuration
+
+### 1. Reviewers
+```yaml
+reviewers:
+  - codewithkenzo  # Project maintainer
+```
+**Rationale**: Single-author project, self-review for quality assurance
+
+### 2. Labels Configuration
+```yaml
+labels:
+  - breaking-change  # Major API/interface changes
+  - cli              # CLI interface modifications
+  - enhancement      # Feature improvements
+  - bug-fix          # Critical bug fixes included
+  - high-priority    # Requires immediate attention
+```
+
+### 3. Milestone
+```yaml
+milestone: v1.1.0
+```
+**Rationale**: Breaking changes require version bump following semantic versioning
+
+### 4. Merge Strategy
+```yaml
+merge-strategy: squash
+```
+**Rationale**:
+- Clean, linear commit history
+- Consolidates breaking changes into single commit
+- Professional release history for npm package
+
+### 5. Auto-merge Configuration
+```yaml
+auto-merge: false
+```
+**Rationale**: Breaking changes require manual review and approval
+
+### 6. Additional Settings
+```yaml
+draft: false
+delete-branch-on-merge: true
+allow-edits: false  # Breaking changes shouldn't allow direct edits
+```
+
+## PR Template Configuration
+Create `.github/pull_request_template.md`:
+
+```markdown
+## 🚨 Breaking Change - CLI Interface Refactoring
+
+### 📋 Change Summary
+- [ ] CLI interface refactoring
+- [ ] Breaking changes documented
+- [ ] Migration guide provided
+- [ ] Test coverage maintained (85%+)
+
+### 🧪 Testing Status
+- [ ] All automated tests pass
+- [ ] Manual CLI testing completed
+- [ ] Breaking change scenarios validated
+- [ ] Migration scenarios tested
+
+### 📦 Release Readiness
+- [ ] Version updated (1.0.1 → 1.1.0)
+- [ ] CHANGELOG.md updated
+- [ ] Breaking changes documented in README
+- [ ] Migration guide included
+
+### 🔐 Security & Performance
+- [ ] No security regressions
+- [ ] Performance improvements validated
+- [ ] Memory usage checked
+- [ ] Error handling improved
+
+### 📝 Documentation
+- [ ] CLI help text updated
+- [ ] README updated for breaking changes
+- [ ] API documentation updated
+- [ ] Examples and usage guides updated
+```
+
+## GitHub Actions Workflow Integration
+
+### PR Validation Workflow
+Create `.github/workflows/pr-validation.yml`:
+
+```yaml
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Validate breaking changes
+        run: |
+          echo "🔍 Validating breaking changes..."
+          # Check for breaking change documentation
+          if ! grep -q "BREAKING" CHANGELOG.md; then
+            echo "❌ Breaking changes not documented in CHANGELOG.md"
+            exit 1
+          fi
+
+      - name: Run full test suite
+        run: bun test
+
+      - name: Check test coverage
+        run: |
+          # Ensure 85%+ coverage is maintained
+          echo "✅ Validating test coverage..."
+          bun test --coverage
+
+      - name: Type checking
+        run: bun run typecheck
+
+      - name: Linting
+        run: bun run lint
+
+      - name: Build validation
+        run: bun run build
+
+      - name: CLI smoke test
+        run: |
+          echo "🧪 Testing CLI after changes..."
+          dist/pplx --version
+          dist/pplx --help
+```
+
+## Branch Protection Rules
+
+### Recommended Branch Protection for `main`
+```yaml
+protection_rules:
+  required_status_checks:
+    strict: true
+    contexts:
+      - "PR Validation"
+      - "Type Check"
+      - "Build"
+      - "Test"
+
+  enforce_admins: true
+  required_pull_request_reviews:
+    required_approving_review_count: 1
+    dismiss_stale_reviews: true
+    require_code_owner_reviews: true
+
+  restrictions:
+    users: ["codewithkenzo"]
+```
+
+## Issue Linking Strategy
+
+### Related Issues Template
+```markdown
+### 🔗 Related Issues
+Closes #issue_number
+Fixes #issue_number
+Related to #issue_number
+```
+
+### Breaking Change Issue Pattern
+```markdown
+### Breaking Change Issue Template
+- **Type**: Breaking Change
+- **Component**: CLI Interface
+- **Impact**: User workflow changes
+- **Migration**: Required steps documented
+- **Timeline**: v1.1.0 release
+```
+
+## Release Workflow Integration
+
+### Pre-release Checklist
+- [ ] All PR checks pass
+- [ ] Breaking changes documented
+- [ ] Version updated correctly
+- [ ] CHANGELOG.md updated
+- [ ] Migration guide ready
+- [ ] Release notes drafted
+
+### Release Automation
+The existing `.github/workflows/publish.yml` already handles:
+- Automated testing
+- Build validation
+- npm publishing
+- Package verification
+
+## Communication Strategy
+
+### Breaking Change Communication
+1. **PR Description**: Clear breaking change summary
+2. **Release Notes**: Detailed migration guide
+3. **README Update**: Prominent breaking change notice
+4. **CHANGELOG**: Structured breaking change documentation
+
+### User Migration Support
+- Migration guide in README
+- Examples of old vs new CLI usage
+- Backward compatibility notes (if any)
+- Timeline for migration support
+
+## Quality Gates
+
+### Must-Have Requirements
+- ✅ All tests passing (85%+ coverage)
+- ✅ Breaking changes documented
+- ✅ Migration guide provided
+- ✅ CLI smoke tests passing
+- ✅ Type checking passing
+- ✅ Build successful
+
+### Nice-to-Have Requirements
+- Performance benchmarks
+- Memory usage comparison
+- User acceptance testing
+- Documentation review
+
+## Rollback Strategy
+
+### If Breaking Changes Cause Issues
+1. Immediate rollback to previous version
+2. Hotfix release (v1.1.1)
+3. Communication to users
+4. Extended support for previous version
+5. Improved migration documentation
+
+This configuration ensures professional release management for breaking changes while maintaining high quality standards for the pplx-zero CLI tool.
