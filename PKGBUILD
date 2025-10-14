@@ -2,8 +2,8 @@
 # Contributor: pplx-zero package maintainer
 
 pkgname=pplx-zero
-pkgver=1.0.0
-pkgrel=1
+pkgver=1.0.1
+pkgrel=2
 pkgdesc="Fast Perplexity AI search CLI with multimodal support - minimal setup, maximal results"
 arch=('any')
 url="https://github.com/codewithkenzo/pplx-zero"
