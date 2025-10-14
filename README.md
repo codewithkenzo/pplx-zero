@@ -290,14 +290,16 @@ Each result printed as a separate JSON line for real-time processing.
 ## Development
 
 ```bash
+# Clone and build
+git clone https://github.com/codewithkenzo/pplx-zero.git
+cd pplx-zero
+bun install && bun run build
+
 # Development mode
 bun run dev
 
 # Type checking
 bun run typecheck
-
-# Run tests
-bun test
 
 # Build for production
 bun run build
