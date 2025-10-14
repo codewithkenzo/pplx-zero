@@ -29,16 +29,25 @@ A fast TypeScript CLI for Perplexity AI search with multimodal support. Built wi
 
 **📦 Package Manager Installation (Recommended)**
 
+<p align="center">
+  <a href="https://badge.fury.io/js/pplx-zero"><img src="https://badge.fury.io/js/pplx-zero.svg" alt="npm version"></a>
+  <a href="https://aur.archlinux.org/packages/pplx-zero"><img src="https://img.shields.io/aur/version/pplx-zero?style=flat-square" alt="AUR package"></a>
+</p>
+
 ```bash
-# npm (Node.js package manager)
+# npm (Node.js package manager) - Global installation
 npm install -g pplx-zero
 
-# AUR (Arch Linux)
+# AUR (Arch Linux) - Binary package
 yay -S pplx-zero
-# or manual AUR
+
+# AUR (Arch Linux) - Manual build
 git clone https://aur.archlinux.org/pplx-zero.git
 cd pplx-zero
 makepkg -si
+
+# Verify installation
+pplx --version
 ```
 
 **🔨 Manual Installation**
@@ -51,6 +60,9 @@ bun install && bun run build
 
 # Add to PATH
 sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/pplx
+
+# Verify installation
+pplx --version
 ```
 
 ### 2️⃣ Setup API Key
@@ -67,46 +79,90 @@ setx PERPLEXITY_API_KEY "your-api-key"
 
 **Get your API key:** https://www.perplexity.ai/account/api/keys
 
-### 3️⃣ Start Searching
+### 3️⃣ Start Searching (Simplified Interface)
 
 ```bash
-# Basic search
+# Simple search
 pplx "latest AI developments"
 
-# Choose model
-pplx --model sonar-pro "Detailed analysis"
+# Choose model for detailed analysis
+pplx --model sonar-pro "Explain quantum computing"
 
-# Document analysis
-pplx --attach report.pdf "Summarize this document"
+# Analyze document (simplified syntax)
+pplx --file report.pdf "Summarize this document"
 
-# Image analysis
-pplx --attach-image screenshot.png "Analyze this interface"
+# Analyze image (simplified syntax)
+pplx --image screenshot.png "What does this interface do?"
 
-# Batch processing
-pplx --input queries.json
+# Document + image analysis
+pplx --file data.csv --image chart.png "Analyze this data"
 
-# Stream processing
-cat queries.jsonl | pplx --stdin
+# Advanced AI models
+pplx --model sonar-reasoning "Solve this math problem"
+pplx --model sonar-deep-research "History of artificial intelligence"
+
+# See basic help
+pplx --help
+
+# See advanced options
+pplx --help-advanced
+```
+
+**🔄 Migration from v1.0.x:**
+```bash
+# OLD: pplx --format jsonl --input queries.json "search"
+# NEW: pplx --format jsonl --input queries.json "search"  # format flag unchanged
+
+# OLD: pplx --attach document.pdf "analyze"
+# NEW: pplx --file document.pdf "analyze"              # simplified syntax
 ```
 
 ## Usage Guide
 
 ### Command Line Options
 
+**Simplified Interface (Everyday Usage):**
 ```bash
-# Search with custom settings
-pplx --concurrency 10 --timeout 60000 --format jsonl "machine learning trends"
+# Basic search with model selection
+pplx --model sonar-pro "Detailed analysis"
 
-# Model selection
+# File attachments (simplified syntax)
+pplx --file document.pdf "Summarize this report"
+pplx --image chart.png "Analyze this chart"
+
+# Multiple attachments
+pplx --file doc1.pdf --image img1.png "Analyze these files"
+
+# Output format selection
+pplx --format jsonl "Machine learning trends"
+
+# Choose AI models
 pplx --model sonar-pro "Detailed analysis"
 pplx --model sonar-reasoning "Complex problem solving"
+```
 
-# File attachments
-pplx --attach document.pdf "Summarize this report"
-pplx --attach-image chart.png "Analyze this chart"
+**Advanced Interface (Power Users):**
+```bash
+# Custom concurrency and timeout
+pplx --concurrency 10 --timeout 60000 --format jsonl "machine learning trends"
 
-# Async processing
+# Batch processing
+pplx --input queries.json --concurrency 5
+
+# Stream processing
+cat queries.jsonl | pplx --stdin
+
+# Advanced attachments (multiple files)
+pplx --attach doc1.pdf --attach doc2.txt --attach-image img1.png "Analyze all files"
+
+# Async processing with webhook
 pplx --async --webhook https://api.example.com/callback "Research task"
+
+# Custom workspace
+pplx --workspace /tmp/research "Custom workspace search"
+
+# See all advanced options
+pplx --help-advanced
 ```
 
 ### Batch Processing
@@ -176,20 +232,44 @@ console.log(result);
 
 ## Configuration
 
+### Simplified Options (Everyday Usage)
+
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--input` | `-i` | string | - | Read batch requests from JSON file |
+| `--file` | `-f` | string | - | Attach document (PDF, DOC, DOCX, TXT, RTF) |
+| `--image` | `-i` | string | - | Attach image (PNG, JPEG, WebP, HEIF, HEIC, GIF) |
+| `--format` | `-o` | string | json | Output format: json|jsonl |
+| `--model` | `-m` | string | sonar | AI model: sonar, sonar-pro, sonar-deep-research, sonar-reasoning |
+| `--version` | `-v` | boolean | - | Show version |
+| `--help` | `-h` | boolean | - | Show basic help |
+
+### Advanced Options (Power Users)
+
+| Option | Short | Type | Default | Description |
+|--------|-------|------|---------|-------------|
+| `--input` | `-I` | string | - | Read batch requests from JSON file |
 | `--stdin` | `-s` | boolean | false | Read JSONL requests from stdin |
 | `--concurrency` | `-c` | number | 5 | Max concurrent requests (1-20) |
 | `--timeout` | `-t` | number | 30000 | Request timeout in ms (1000-300000) |
-| `--format` | `-f` | string | json | Output format: json|jsonl |
-| `--model` | `-m` | string | sonar | AI model to use |
-| `--attach` | - | string[] | - | Attach document files |
-| `--attach-image` | - | string[] | - | Attach image files |
+| `--workspace` | `-w` | string | - | Workspace directory for sandboxing |
+| `--attach` | - | string[] | - | Attach document files (multiple) |
+| `--attach-image` | - | string[] | - | Attach image files (multiple) |
 | `--async` | - | boolean | false | Process requests asynchronously |
 | `--webhook` | - | string | - | Webhook URL for async notifications |
-| `--version` | `-v` | boolean | - | Show version |
-| `--help` | `-h` | boolean | - | Show help |
+| `--help-advanced` | - | boolean | - | Show advanced help with all options |
+
+### Quick Reference
+
+```bash
+# Basic usage (simplified)
+pplx -f doc.pdf -m sonar-pro "analyze this"
+
+# Advanced usage (full control)
+pplx -I batch.json -c 10 -t 60000 --format jsonl "process all"
+
+# See all available options
+pplx --help-advanced
+```
 
 ### AI Models
 

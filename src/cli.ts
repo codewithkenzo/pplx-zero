@@ -10,15 +10,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 interface CliOptions {
+  // Simplified options
+  file?: string;
+  image?: string;
+  format?: string;
+
+  // Standard options
+  version?: boolean;
+  help?: boolean;
+  'help-advanced'?: boolean;
+  model?: string;
+
+  // Advanced options
   input?: string;
   stdin?: boolean;
   concurrency?: string;
   timeout?: string;
   workspace?: string;
-  format?: string;
-  version?: boolean;
-  help?: boolean;
-  model?: string;
   attach?: string[];
   'attach-image'?: string[];
   async?: boolean;
@@ -33,15 +41,23 @@ interface ParsedArgs {
 const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = parseArgs({
   args: process.argv.slice(2),
   options: {
-    input: { type: 'string', short: 'i' },
+    // Basic options for normal usage
+    model: { type: 'string', short: 'm' },
+    file: { type: 'string', short: 'f' },
+    image: { type: 'string', short: 'i' },
+    format: { type: 'string', short: 'o', default: 'json' },
+
+    // Standard commands
+    version: { type: 'boolean', short: 'v' },
+    help: { type: 'boolean', short: 'h' },
+    'help-advanced': { type: 'boolean' },
+
+    // Advanced options (hidden from basic help)
+    input: { type: 'string', short: 'I' },
     stdin: { type: 'boolean', short: 's' },
     concurrency: { type: 'string', short: 'c' },
     timeout: { type: 'string', short: 't' },
     workspace: { type: 'string', short: 'w' },
-    format: { type: 'string', short: 'f', default: 'json' },
-    version: { type: 'boolean', short: 'v' },
-    help: { type: 'boolean', short: 'h' },
-    model: { type: 'string', short: 'm' },
     attach: { type: 'string', multiple: true },
     'attach-image': { type: 'string', multiple: true },
     async: { type: 'boolean' },
@@ -52,62 +68,101 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
 
 if (cliOptions.help) {
   console.error(`
-PPLX-Zero - Minimal, fast Perplexity AI search CLI with multimodal support
+PPLX-Zero - Fast Perplexity AI search CLI with multimodal support
 
 USAGE:
   pplx [OPTIONS] [QUERY...]
 
-OPTIONS:
-  -i, --input <file>              Read batch requests from JSON file
-  -s, --stdin                     Read JSONL requests from stdin
-  -c, --concurrency <n>          Max concurrent requests (default: 5)
-  -t, --timeout <ms>              Request timeout in milliseconds (default: 30000)
-  -w, --workspace <path>          Workspace directory for sandboxing
-  -f, --format <format>           Output format: json|jsonl (default: json)
-  -m, --model <model>             AI model: sonar, sonar-pro, sonar-deep-research, sonar-reasoning (default: sonar)
-  --attach <file>                 Attach document files (PDF, DOC, DOCX, TXT, RTF) - can be used multiple times
-  --attach-image <file>           Attach image files (PNG, JPEG, WebP, HEIF, HEIC, GIF) - can be used multiple times
-  --async                         Process requests asynchronously
-  --webhook <url>                 Webhook URL for async notifications
-  -v, --version                   Show version
-  -h, --help                      Show this help
+BASIC OPTIONS:
+  -m, --model <model>       Choose AI model (sonar, sonar-pro, sonar-deep-research, sonar-reasoning)
+  -f, --file <file>         Attach document (PDF, DOC, DOCX, TXT, RTF)
+  -i, --image <file>        Attach image (PNG, JPEG, WebP, HEIF, HEIC, GIF)
+  -o, --format <format>     Output format (json, jsonl)
+
+  -v, --version             Show version
+  -h, --help                Show this help
 
 EXAMPLES:
-  # Basic query
+  # Simple search
   pplx "latest AI developments"
 
-  # Model selection
-  pplx --model sonar-pro "Detailed analysis"
-  pplx --model sonar-deep-research "Comprehensive research"
-  pplx --model sonar-reasoning "Complex problem solving"
+  # Choose model for detailed analysis
+  pplx --model sonar-pro "Explain quantum computing"
 
-  # Image analysis
-  pplx --attach-image screenshot.png --model sonar-pro "Analyze this interface"
+  # Analyze document
+  pplx --file report.pdf "Summarize this document"
 
-  # Document analysis
-  pplx --attach report.pdf --model sonar-deep-research "Summarize this document"
+  # Analyze image
+  pplx --image screenshot.png "What does this interface do?"
 
-  # Multimodal analysis
-  pplx --attach document.txt --attach-image chart.png --model sonar-reasoning "Analyze this data"
+  # Document + image analysis
+  pplx --file data.csv --image chart.png "Analyze this data"
 
-  # Async processing with webhook
-  pplx --async --webhook https://api.example.com/callback "Long research task"
+  # Different AI models
+  pplx --model sonar-reasoning "Solve this math problem"
+  pplx --model sonar-deep-research "History of artificial intelligence"
 
-  # Batch from file
-  pplx --input queries.json
-
-  # Streaming from stdin
-  cat queries.jsonl | pplx --stdin
-
-  # JSONL output for streaming
-  pplx --format jsonl --input queries.json
-
-  # High concurrency batch with attachments
-  pplx --concurrency 10 --timeout 60000 --input queries.json --attach appendix.pdf
+# Advanced Usage (see --help-advanced):
+  pplx --help-advanced
 
 SUPPORTED FORMATS:
-  Images: PNG, JPEG, WebP, HEIF, HEIC, GIF (max 50MB, 10 files)
-  Documents: PDF, DOC, DOCX, TXT, RTF (max 50MB, 10 files)
+  Documents: PDF, DOC, DOCX, TXT, RTF (max 50MB)
+  Images: PNG, JPEG, WebP, HEIF, HEIC, GIF (max 50MB)
+
+Get your API key: https://www.perplexity.ai/account/api/keys
+Set environment variable: export PERPLEXITY_API_KEY="your-key"
+`);
+  process.exit(0);
+}
+
+if (cliOptions['help-advanced']) {
+  console.error(`
+PPLX-Zero - Advanced Usage Options
+
+USAGE:
+  pplx [ADVANCED-OPTIONS] [QUERY...]
+
+ADVANCED OPTIONS:
+  -I, --input <file>         Read batch requests from JSON file
+  -s, --stdin                Read JSONL requests from stdin
+  -c, --concurrency <n>      Max concurrent requests (default: 5, max: 20)
+  -t, --timeout <ms>          Request timeout in milliseconds (default: 30000)
+  -w, --workspace <path>     Workspace directory for sandboxing
+  -o, --format <format>      Output format: json|jsonl (default: json)
+  -m, --model <model>         AI model (default: sonar)
+
+  --attach <file>             Attach document files (can be used multiple times)
+  --attach-image <file>       Attach image files (can be used multiple times)
+  --async                     Process requests asynchronously
+  --webhook <url>             Webhook URL for async notifications
+
+  -v, --version               Show version
+  -h, --help                  Show basic help
+
+ADVANCED EXAMPLES:
+  # Batch processing
+  pplx --input queries.json
+
+  # Stream processing
+  cat queries.jsonl | pplx --stdin
+
+  # Custom concurrency and timeout
+  pplx --concurrency 10 --timeout 60000 "Multiple searches"
+
+  # High performance batch
+  pplx --input queries.json --concurrency 15 --format jsonl
+
+  # Multiple attachments (advanced syntax)
+  pplx --attach doc1.pdf --attach doc2.txt --attach-image img1.png "Analyze all files"
+
+  # Async processing with webhook
+  pplx --async --webhook https://api.example.com/webhook "Long research task"
+
+  # Custom workspace
+  pplx --workspace /tmp/research "Custom workspace search"
+
+# Basic Usage (see --help):
+  pplx --help
 `);
   process.exit(0);
 }
@@ -251,7 +306,8 @@ async function main(): Promise<void> {
       model: selectedModel,
       async: cliOptions.async,
       webhook: cliOptions.webhook,
-      hasAttachments: (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0) > 0
+      hasAttachments: (cliOptions.file || cliOptions.image ||
+        (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0)) > 0
     }
   });
 
@@ -270,7 +326,23 @@ async function main(): Promise<void> {
       // Build attachment inputs from CLI options
       const attachmentInputs: any[] = [];
 
-      // Process document attachments
+      // Process simplified document attachments
+      if (cliOptions.file) {
+        attachmentInputs.push({
+          path: cliOptions.file,
+          type: 'document',
+        });
+      }
+
+      // Process simplified image attachments
+      if (cliOptions.image) {
+        attachmentInputs.push({
+          path: cliOptions.image,
+          type: 'image',
+        });
+      }
+
+      // Process advanced document attachments
       if (cliOptions.attach && cliOptions.attach.length > 0) {
         for (const filePath of cliOptions.attach) {
           attachmentInputs.push({
@@ -280,7 +352,7 @@ async function main(): Promise<void> {
         }
       }
 
-      // Process image attachments
+      // Process advanced image attachments
       if (cliOptions['attach-image'] && cliOptions['attach-image'].length > 0) {
         for (const filePath of cliOptions['attach-image']) {
           attachmentInputs.push({

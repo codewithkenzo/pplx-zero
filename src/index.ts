@@ -101,11 +101,7 @@ export class PerplexitySearchTool {
         attachments = validatedInput.args.attachments;
       }
 
-      // Combine with existing attachments
-      if (validatedInput.args.attachments) {
-        attachments = [...attachments, ...validatedInput.args.attachments];
-      }
-
+  
       const timeoutMs = validatedInput.options?.timeoutMs || 30000;
       const controller = new AbortController();
 
