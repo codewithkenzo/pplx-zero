@@ -195,7 +195,7 @@ pplx --input queries.json --format jsonl
 Supported file formats for analysis:
 
 **Documents (max 50MB):**
-- PDF, DOC, DOCX, TXT, RTF
+- PDF, DOC, DOCX, TXT, RTF, MD
 
 **Images (max 50MB):**
 - PNG, JPEG, WebP, HEIF, HEIC, GIF
@@ -236,7 +236,7 @@ console.log(result);
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `--file` | `-f` | string | - | Attach document (PDF, DOC, DOCX, TXT, RTF) |
+| `--file` | `-f` | string | - | Attach document (PDF, DOC, DOCX, TXT, RTF, MD) |
 | `--image` | `-i` | string | - | Attach image (PNG, JPEG, WebP, HEIF, HEIC, GIF) |
 | `--format` | `-o` | string | json | Output format: json|jsonl |
 | `--model` | `-m` | string | sonar | AI model: sonar, sonar-pro, sonar-deep-research, sonar-reasoning |

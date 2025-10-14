@@ -20,6 +20,8 @@ const DOCUMENT_MIME_TYPES = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.txt': 'text/plain',
   '.rtf': 'application/rtf',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
 } as const;
 
 // File size limits (50MB max as per Perplexity docs)
