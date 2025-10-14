@@ -1,5 +1,5 @@
 pkgbase = pplx-zero
-	pkgdesc = Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises
+	pkgdesc = Fast Perplexity AI search CLI with multimodal support - minimal setup, maximal results
 	pkgver = 1.0.0
 	pkgrel = 1
 	url = https://github.com/codewithkenzo/pplx-zero
