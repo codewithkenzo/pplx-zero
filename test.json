@@ -1,1 +1,0 @@
-{"name": "Test Application", "version": "1.0.0", "features": ["attachments", "model-selection", "async-processing"], "status": "ready", "performance": {"latency": "50ms", "throughput": "1000req/s"}}

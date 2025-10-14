@@ -121,48 +121,34 @@ pplx --help-advanced
 
 ### Command Line Options
 
-**Simplified Interface (Everyday Usage):**
+**Quick Reference:**
 ```bash
-# Basic search with model selection
-pplx --model sonar-pro "Detailed analysis"
+# Basic search
+pplx "latest AI developments"
 
-# File attachments (simplified syntax)
-pplx --file document.pdf "Summarize this report"
-pplx --image chart.png "Analyze this chart"
+# File analysis (simplified)
+pplx -f document.pdf "Summarize this"
 
-# Multiple attachments
-pplx --file doc1.pdf --image img1.png "Analyze these files"
+# Advanced batch processing
+pplx --input queries.json -c 10 -t 60000
 
-# Output format selection
-pplx --format jsonl "Machine learning trends"
-
-# Choose AI models
-pplx --model sonar-pro "Detailed analysis"
-pplx --model sonar-reasoning "Complex problem solving"
+# See all options
+pplx --help-advanced
 ```
 
-**Advanced Interface (Power Users):**
+**Essential Commands:**
 ```bash
-# Custom concurrency and timeout
-pplx --concurrency 10 --timeout 60000 --format jsonl "machine learning trends"
+# Model selection
+pplx -m sonar-pro "Detailed analysis"
 
-# Batch processing
-pplx --input queries.json --concurrency 5
+# File + image
+pplx -f doc.md -i chart.png "Analyze both"
 
-# Stream processing
-cat queries.jsonl | pplx --stdin
+# Output format
+pplx -o jsonl "Get streaming output"
 
-# Advanced attachments (multiple files)
-pplx --attach doc1.pdf --attach doc2.txt --attach-image img1.png "Analyze all files"
-
-# Async processing with webhook
-pplx --async --webhook https://api.example.com/callback "Research task"
-
-# Custom workspace
-pplx --workspace /tmp/research "Custom workspace search"
-
-# See all advanced options
-pplx --help-advanced
+# Async with webhook
+pplx --async --webhook https://api.example.com "Long task"
 ```
 
 ### Batch Processing
