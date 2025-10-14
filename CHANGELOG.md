@@ -5,6 +5,36 @@ All notable changes to PPLX-Zero will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-10-14
+
+### 🔧 File Attachment Compatibility Fix
+
+**Breaking Changes:**
+- **Reduced supported file types** from 20+ to exactly match Perplexity API (11 formats total)
+- **Updated supported formats** to only include officially documented types:
+  - Documents: PDF, DOC, DOCX, TXT, RTF (5 types)
+  - Images: PNG, JPEG, WebP, HEIF, HEIC, GIF (6 types)
+
+**Features Added:**
+- **🖼️ Production-Ready File Attachments** - Full compatibility with Perplexity API specifications
+- **📚 Official API Compliance** - Implementation now matches official documentation exactly
+- **⚡ Improved Error Handling** - Clear, specific error messages for unsupported file types
+- **📏 Increased File Size Limit** - Updated from 40MB to 50MB to match API specifications
+
+**Fixed:**
+- JSON, XML, CSV, MD, and other unsupported formats now properly rejected
+- Base64 encoding format validated for all supported types
+- Clear error messages for unsupported file attachments
+- Documentation now accurately reflects actual supported capabilities
+
+**Documentation Updates:**
+- Added comprehensive file attachment examples
+- Updated CLI help text with correct supported formats
+- Enhanced README with multimodal features section
+- Added AI model descriptions and use cases
+
+---
+
 ## [1.0.0] - 2025-10-13
 
 ### 🎉 Initial Release - PPLX-Zero

@@ -16,9 +16,13 @@ interface CliOptions {
   timeout?: string;
   workspace?: string;
   format?: string;
-  'dry-run'?: boolean;
   version?: boolean;
   help?: boolean;
+  model?: string;
+  attach?: string[];
+  'attach-image'?: string[];
+  async?: boolean;
+  webhook?: string;
 }
 
 interface ParsedArgs {
@@ -35,34 +39,59 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
     timeout: { type: 'string', short: 't' },
     workspace: { type: 'string', short: 'w' },
     format: { type: 'string', short: 'f', default: 'json' },
-    'dry-run': { type: 'boolean', short: 'd' },
     version: { type: 'boolean', short: 'v' },
     help: { type: 'boolean', short: 'h' },
+    model: { type: 'string', short: 'm' },
+    attach: { type: 'string', multiple: true },
+    'attach-image': { type: 'string', multiple: true },
+    async: { type: 'boolean' },
+    webhook: { type: 'string' },
   },
   allowPositionals: true,
 }) as ParsedArgs;
 
 if (cliOptions.help) {
   console.error(`
-PPLX-Zero - Minimal, fast Perplexity AI search CLI
+PPLX-Zero - Minimal, fast Perplexity AI search CLI with multimodal support
 
 USAGE:
   pplx [OPTIONS] [QUERY...]
 
 OPTIONS:
-  -i, --input <file>     Read batch requests from JSON file
-  -s, --stdin            Read JSONL requests from stdin
-  -c, --concurrency <n>  Max concurrent requests (default: 5)
-  -t, --timeout <ms>     Request timeout in milliseconds (default: 30000)
-  -w, --workspace <path> Workspace directory for sandboxing
-  -f, --format <format>  Output format: json|jsonl (default: json)
-  -d, --dry-run          Validate input without executing searches
-  -v, --version          Show version
-  -h, --help             Show this help
+  -i, --input <file>              Read batch requests from JSON file
+  -s, --stdin                     Read JSONL requests from stdin
+  -c, --concurrency <n>          Max concurrent requests (default: 5)
+  -t, --timeout <ms>              Request timeout in milliseconds (default: 30000)
+  -w, --workspace <path>          Workspace directory for sandboxing
+  -f, --format <format>           Output format: json|jsonl (default: json)
+  -m, --model <model>             AI model: sonar, sonar-pro, sonar-deep-research, sonar-reasoning (default: sonar)
+  --attach <file>                 Attach document files (PDF, DOC, DOCX, TXT, RTF) - can be used multiple times
+  --attach-image <file>           Attach image files (PNG, JPEG, WebP, HEIF, HEIC, GIF) - can be used multiple times
+  --async                         Process requests asynchronously
+  --webhook <url>                 Webhook URL for async notifications
+  -v, --version                   Show version
+  -h, --help                      Show this help
 
 EXAMPLES:
-  # Single query
+  # Basic query
   pplx "latest AI developments"
+
+  # Model selection
+  pplx --model sonar-pro "Detailed analysis"
+  pplx --model sonar-deep-research "Comprehensive research"
+  pplx --model sonar-reasoning "Complex problem solving"
+
+  # Image analysis
+  pplx --attach-image screenshot.png --model sonar-pro "Analyze this interface"
+
+  # Document analysis
+  pplx --attach report.pdf --model sonar-deep-research "Summarize this document"
+
+  # Multimodal analysis
+  pplx --attach document.txt --attach-image chart.png --model sonar-reasoning "Analyze this data"
+
+  # Async processing with webhook
+  pplx --async --webhook https://api.example.com/callback "Long research task"
 
   # Batch from file
   pplx --input queries.json
@@ -73,8 +102,12 @@ EXAMPLES:
   # JSONL output for streaming
   pplx --format jsonl --input queries.json
 
-  # High concurrency batch
-  pplx --concurrency 10 --timeout 60000 --input queries.json
+  # High concurrency batch with attachments
+  pplx --concurrency 10 --timeout 60000 --input queries.json --attach appendix.pdf
+
+SUPPORTED FORMATS:
+  Images: PNG, JPEG, WebP, HEIF, HEIC, GIF (max 50MB, 10 files)
+  Documents: PDF, DOC, DOCX, TXT, RTF (max 50MB, 10 files)
 `);
   process.exit(0);
 }
@@ -187,26 +220,40 @@ async function main(): Promise<void> {
 
     const workspaceDirectory = cliOptions.workspace;
     const outputFormat = cliOptions.format as 'json' | 'jsonl';
-    const isDryRunMode = cliOptions['dry-run'];
 
     if (!['json', 'jsonl'].includes(outputFormat)) {
       throw new Error('Format must be json or jsonl');
     }
 
-    const searchTool = new PerplexitySearchTool(workspaceDirectory);
+    // Validate model if provided
+  let selectedModel: string | undefined;
+  if (cliOptions.model) {
+    const validModels = ['sonar', 'sonar-pro', 'sonar-deep-research', 'sonar-reasoning'];
+    if (!validModels.includes(cliOptions.model)) {
+      throw new Error(`Invalid model: ${cliOptions.model}. Valid models: ${validModels.join(', ')}`);
+    }
+    selectedModel = cliOptions.model;
+  }
 
-    logEvent({
-      time: new Date().toISOString(),
-      level: 'info',
-      event: 'tool_initialized',
-      data: {
-        concurrency: maxConcurrency,
-        timeout: requestTimeout,
-        workspace: workspaceDirectory,
-        format: outputFormat,
-        dryRun: isDryRunMode
-      }
-    });
+  const searchTool = new PerplexitySearchTool(workspaceDirectory, {
+    defaultModel: selectedModel as any,
+  });
+
+  logEvent({
+    time: new Date().toISOString(),
+    level: 'info',
+    event: 'tool_initialized',
+    data: {
+      concurrency: maxConcurrency,
+      timeout: requestTimeout,
+      workspace: workspaceDirectory,
+      format: outputFormat,
+      model: selectedModel,
+      async: cliOptions.async,
+      webhook: cliOptions.webhook,
+      hasAttachments: (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0) > 0
+    }
+  });
 
     let batchSearchInput: BatchSearchInputV1;
     let inputSourceType: string;
@@ -219,6 +266,30 @@ async function main(): Promise<void> {
       inputSourceType = cliOptions.input;
     } else if (commandLineQueries.length > 0) {
       const combinedQuery = commandLineQueries.join(' ');
+
+      // Build attachment inputs from CLI options
+      const attachmentInputs: any[] = [];
+
+      // Process document attachments
+      if (cliOptions.attach && cliOptions.attach.length > 0) {
+        for (const filePath of cliOptions.attach) {
+          attachmentInputs.push({
+            path: filePath,
+            type: 'document',
+          });
+        }
+      }
+
+      // Process image attachments
+      if (cliOptions['attach-image'] && cliOptions['attach-image'].length > 0) {
+        for (const filePath of cliOptions['attach-image']) {
+          attachmentInputs.push({
+            path: filePath,
+            type: 'image',
+          });
+        }
+      }
+
       batchSearchInput = {
         version: '1.0.0',
         requests: [{
@@ -226,7 +297,14 @@ async function main(): Promise<void> {
           args: {
             query: combinedQuery,
             maxResults: 5,
+            model: selectedModel as any,
+            attachmentInputs: attachmentInputs.length > 0 ? attachmentInputs : undefined,
           },
+          options: {
+            timeoutMs: requestTimeout,
+            async: cliOptions.async,
+            webhook: cliOptions.webhook,
+          }
         }],
       };
       inputSourceType = 'cli';
@@ -251,23 +329,6 @@ async function main(): Promise<void> {
       failFast: false,
       ...batchSearchInput.options,
     };
-
-    if (isDryRunMode) {
-      logEvent({
-        time: new Date().toISOString(),
-        level: 'info',
-        event: 'dry_run_completed',
-        data: { requestCount: batchSearchInput.requests?.length || 1 }
-      });
-
-      console.log(JSON.stringify({
-        ok: true,
-        message: 'Dry run completed - input validation passed',
-        requestCount: batchSearchInput.requests?.length || 1,
-        inputSource: inputSourceType,
-      }, null, 2));
-      return;
-    }
 
     logEvent({
       time: new Date().toISOString(),

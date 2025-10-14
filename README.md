@@ -1,6 +1,6 @@
 # PPLX-Zero
 
-> Minimal, fast Perplexity AI search CLI - zero configuration, zero compromises
+> Fast Perplexity AI search CLI - minimal setup, maximal results
 
 <p align="center">
   <a href="https://badge.fury.io/js/pplx-zero"><img src="https://badge.fury.io/js/pplx-zero.svg" alt="npm version"></a>
@@ -10,16 +10,18 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
-PPLX-Zero is a blazing-fast, zero-config TypeScript implementation of Perplexity AI search integration. Built with Bun runtime for maximum performance and zero bloat.
+A fast TypeScript CLI for Perplexity AI search with multimodal support. Built with Bun runtime for performance and reliability.
 
-## Key Features
+## Features
 
-- **⚡ Fast Performance** - Concurrent searches with intelligent rate limiting
-- **🎯 Zero Configuration** - Works out of the box with just an API key
-- **📦 Batch Processing** - Handle multiple queries simultaneously
-- **🔄 Real-time Streaming** - Progress updates via JSONL events
+- **⚡ Fast Search** - Concurrent queries with intelligent rate limiting
+- **🎯 Simple Setup** - Works with just an API key, no configuration required
+- **📦 Batch Processing** - Handle multiple searches simultaneously
+- **🔄 Real-time Updates** - JSONL streaming progress events
+- **🖼️ File Analysis** - Process documents and images with AI models
+- **🤖 AI Models** - Sonar, Sonar Pro, Sonar Deep Research, Sonar Reasoning
 - **🛡️ Type Safe** - Full Zod validation and TypeScript support
-- **🌍 Cross-Platform** - Native Bun runtime everywhere
+- **🌍 Cross-Platform** - Native Bun runtime support
 
 ## Quick Start
 
@@ -68,29 +70,43 @@ setx PERPLEXITY_API_KEY "your-api-key"
 ### 3️⃣ Start Searching
 
 ```bash
-# Single query (CLI command is 'pplx')
+# Basic search
 pplx "latest AI developments"
 
-# Batch from file
+# Choose model
+pplx --model sonar-pro "Detailed analysis"
+
+# Document analysis
+pplx --attach report.pdf "Summarize this document"
+
+# Image analysis
+pplx --attach-image screenshot.png "Analyze this interface"
+
+# Batch processing
 pplx --input queries.json
 
-# Stream from stdin
+# Stream processing
 cat queries.jsonl | pplx --stdin
 ```
 
 ## Usage Guide
 
-### Command Line Interface
+### Command Line Options
 
 ```bash
-# Basic usage
-pplx "your search query"
-
-# Advanced options
+# Search with custom settings
 pplx --concurrency 10 --timeout 60000 --format jsonl "machine learning trends"
 
-# Dry run validation
-pplx --dry-run "test query"
+# Model selection
+pplx --model sonar-pro "Detailed analysis"
+pplx --model sonar-reasoning "Complex problem solving"
+
+# File attachments
+pplx --attach document.pdf "Summarize this report"
+pplx --attach-image chart.png "Analyze this chart"
+
+# Async processing
+pplx --async --webhook https://api.example.com/callback "Research task"
 ```
 
 ### Batch Processing
@@ -116,6 +132,28 @@ Process with:
 
 ```bash
 pplx --input queries.json --format jsonl
+```
+
+### File Attachments
+
+Supported file formats for analysis:
+
+**Documents (max 50MB):**
+- PDF, DOC, DOCX, TXT, RTF
+
+**Images (max 50MB):**
+- PNG, JPEG, WebP, HEIF, HEIC, GIF
+
+**Examples:**
+```bash
+# Document analysis
+pplx --attach report.pdf "Summarize this document"
+
+# Image analysis
+pplx --attach-image screenshot.png "Analyze this interface"
+
+# Multiple files
+pplx --attach document.txt --attach-image chart.png "Analyze this data"
 ```
 
 ### Programmatic Usage
@@ -145,9 +183,20 @@ console.log(result);
 | `--concurrency` | `-c` | number | 5 | Max concurrent requests (1-20) |
 | `--timeout` | `-t` | number | 30000 | Request timeout in ms (1000-300000) |
 | `--format` | `-f` | string | json | Output format: json|jsonl |
-| `--dry-run` | `-d` | boolean | false | Validate input without executing |
+| `--model` | `-m` | string | sonar | AI model to use |
+| `--attach` | - | string[] | - | Attach document files |
+| `--attach-image` | - | string[] | - | Attach image files |
+| `--async` | - | boolean | false | Process requests asynchronously |
+| `--webhook` | - | string | - | Webhook URL for async notifications |
 | `--version` | `-v` | boolean | - | Show version |
 | `--help` | `-h` | boolean | - | Show help |
+
+### AI Models
+
+- `sonar` - Fast, concise responses (default)
+- `sonar-pro` - Detailed, comprehensive responses
+- `sonar-deep-research` - In-depth research with web search
+- `sonar-reasoning` - Step-by-step logical reasoning
 
 ## Output Formats
 
@@ -193,10 +242,10 @@ bun run build:binary
 
 ## Architecture
 
-- **Bun Runtime** - Ultra-fast JavaScript runtime
+- **Bun Runtime** - Fast JavaScript runtime
 - **Zod Validation** - Type-safe schema validation
-- **Circuit Breaker** - Resilient error handling
-- **Semaphore Pattern** - Controlled concurrency
+- **Error Handling** - Resilient error recovery
+- **Concurrency Control** - Semaphore pattern for rate limiting
 - **Streaming Events** - Real-time progress updates
 
 ## Security Features
@@ -233,4 +282,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with ❤️ using [Bun](https://bun.sh) and [Perplexity AI](https://www.perplexity.ai)**
+**Built with [Bun](https://bun.sh) and [Perplexity AI](https://www.perplexity.ai)**

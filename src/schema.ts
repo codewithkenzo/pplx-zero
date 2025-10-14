@@ -3,11 +3,32 @@ import { z } from 'zod';
 // Version: 1.0.0
 export const SCHEMA_VERSION = '1.0.0';
 
+// Model schemas
+export const SonarModelSchema = z.enum(['sonar', 'sonar-pro', 'sonar-deep-research', 'sonar-reasoning']);
+
+// Attachment schemas
+export const AttachmentSchema = z.object({
+  name: z.string().min(1, 'Attachment name is required'),
+  extension: z.string().min(1, 'File extension is required'),
+  mimeType: z.string().min(1, 'MIME type is required'),
+  url: z.string().min(1, 'Attachment URL is required'),
+  size: z.number().int().min(0, 'File size must be non-negative').optional(),
+});
+
+export const AttachmentInputSchema = z.object({
+  path: z.string().min(1, 'File path is required'),
+  name: z.string().optional(),
+  type: z.enum(['image', 'document']).optional(),
+});
+
 // Input schemas
 export const SearchQuerySchema = z.object({
   query: z.string().min(1, 'Query cannot be empty'),
   maxResults: z.number().int().min(1).max(50).optional().default(5),
   country: z.string().length(2).regex(/^[A-Z]{2}$/, 'Invalid country code').optional(),
+  model: SonarModelSchema.optional().default('sonar'),
+  attachments: z.array(AttachmentSchema).optional(),
+  attachmentInputs: z.array(AttachmentInputSchema).optional(),
 });
 
 export const SearchInputV1Schema = z.object({
@@ -17,7 +38,22 @@ export const SearchInputV1Schema = z.object({
   options: z.object({
     timeoutMs: z.number().int().min(1000).max(300000).optional().default(30000),
     workspace: z.string().optional(),
+    async: z.boolean().optional().default(false),
+    webhook: z.string().url().optional(),
   }).optional(),
+});
+
+// Async request schemas
+export const AsyncJobSchema = z.object({
+  id: z.string(),
+  model: SonarModelSchema,
+  status: z.enum(['CREATED', 'IN_PROGRESS', 'COMPLETED', 'FAILED']),
+  createdAt: z.number(),
+  startedAt: z.number().optional(),
+  completedAt: z.number().optional(),
+  failedAt: z.number().optional(),
+  errorMessage: z.string().optional(),
+  response: z.any().optional(),
 });
 
 export const BatchSearchInputV1Schema = z.object({
@@ -96,3 +132,9 @@ export type SearchOutputV1 = z.infer<typeof SearchOutputV1Schema>;
 export type BatchOutputV1 = z.infer<typeof BatchOutputV1Schema>;
 export type EventV1 = z.infer<typeof EventV1Schema>;
 export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+
+// New types for attachments and models
+export type SonarModel = z.infer<typeof SonarModelSchema>;
+export type Attachment = z.infer<typeof AttachmentSchema>;
+export type AttachmentInput = z.infer<typeof AttachmentInputSchema>;
+export type AsyncJob = z.infer<typeof AsyncJobSchema>;

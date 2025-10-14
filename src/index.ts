@@ -1,22 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import Perplexity from '@perplexity-ai/perplexity_ai';
-import { 
+import {
   SearchInputV1Schema,
   BatchSearchInputV1Schema,
-  SearchInputV1, 
-  SearchOutputV1, 
-  BatchSearchInputV1, 
+  SearchInputV1,
+  SearchOutputV1,
+  BatchSearchInputV1,
   BatchOutputV1,
   SearchQuery,
   SearchResult,
   ERROR_CODES,
-  EventV1
+  EventV1,
+  SonarModel,
+  Attachment,
+  AttachmentInput
 } from './schema.js';
 import { BoundedConcurrencyPool } from './util/concurrency.js';
 import { WorkspaceSandbox } from './util/fs.js';
 import { ResilienceManager, DEFAULT_CONFIGS } from './util/resilience.js';
 import { Logger, MetricsCollector, createLogger } from './util/monitoring.js';
+import { processAttachments, validateAttachmentInputs } from './util/attachments.js';
+import { createAsyncJob, startAsyncJob, completeAsyncJob, failAsyncJob, sendWebhook, getAsyncJob } from './util/async.js';
 
 export class PerplexitySearchTool {
   private client: Perplexity;
@@ -24,6 +29,7 @@ export class PerplexitySearchTool {
   private resilience: ResilienceManager;
   private logger: Logger;
   private metrics: MetricsCollector;
+  private defaultModel: SonarModel;
 
   constructor(
     workspacePath?: string,
@@ -31,6 +37,7 @@ export class PerplexitySearchTool {
       resilienceProfile?: 'conservative' | 'balanced' | 'aggressive' | 'custom';
       resilienceConfig?: any;
       logLevel?: 'debug' | 'info' | 'warn' | 'error';
+      defaultModel?: SonarModel;
     } = {}
   ) {
     const apiKey = process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY;
@@ -40,6 +47,7 @@ export class PerplexitySearchTool {
 
     this.client = new Perplexity({ apiKey });
     this.workspace = new WorkspaceSandbox(workspacePath);
+    this.defaultModel = options.defaultModel || 'sonar';
 
     const resilienceConfig = options.resilienceProfile && options.resilienceProfile !== 'custom'
       ? DEFAULT_CONFIGS[options.resilienceProfile]
@@ -51,12 +59,13 @@ export class PerplexitySearchTool {
       workspace: workspacePath,
       resilienceProfile: options.resilienceProfile || 'balanced',
     });
-    
+
     this.metrics = new MetricsCollector();
-    
+
     this.logger.info('PerplexitySearchTool initialized', {
       workspace: workspacePath,
       resilienceProfile: options.resilienceProfile || 'balanced',
+      defaultModel: this.defaultModel,
     });
   }
 
@@ -64,56 +73,83 @@ export class PerplexitySearchTool {
     const startTime = Date.now();
     const id = input.id || randomUUID();
     const traceLogger = this.logger.withContext({ taskId: id });
-    
+
     try {
       const validatedInput = SearchInputV1Schema.parse(input);
-      
+
       traceLogger.info('Starting search task', {
         query: validatedInput.args.query,
+        model: validatedInput.args.model || this.defaultModel,
         maxResults: validatedInput.args.maxResults,
         country: validatedInput.args.country,
+        hasAttachments: validatedInput.args.attachments && validatedInput.args.attachments.length > 0,
+        hasAttachmentInputs: validatedInput.args.attachmentInputs && validatedInput.args.attachmentInputs.length > 0,
+        async: validatedInput.options?.async,
+        webhook: validatedInput.options?.webhook,
       });
+
+      // Process attachment inputs if provided
+      let attachments: Attachment[] = [];
+      if (validatedInput.args.attachmentInputs && validatedInput.args.attachmentInputs.length > 0) {
+        const validation = validateAttachmentInputs(validatedInput.args.attachmentInputs);
+        if (!validation.valid) {
+          throw new Error(`Attachment validation failed: ${validation.errors.join(', ')}`);
+        }
+
+        attachments = await processAttachments(validatedInput.args.attachmentInputs);
+      } else if (validatedInput.args.attachments) {
+        attachments = validatedInput.args.attachments;
+      }
+
+      // Combine with existing attachments
+      if (validatedInput.args.attachments) {
+        attachments = [...attachments, ...validatedInput.args.attachments];
+      }
 
       const timeoutMs = validatedInput.options?.timeoutMs || 30000;
       const controller = new AbortController();
-      
+
       if (signal) {
         signal.addEventListener('abort', () => controller.abort());
       }
-      
+
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
+
       try {
         const { result, metrics } = await traceLogger.measure(
           'search_operation',
-          () => this.resilience.execute(() => 
-            this.performSearch(validatedInput.args, controller.signal)
+          () => this.resilience.execute(() =>
+            this.performChatCompletion(validatedInput.args, attachments, controller.signal)
           ),
           {
             query: validatedInput.args.query,
+            model: validatedInput.args.model || this.defaultModel,
             maxResults: validatedInput.args.maxResults,
             country: validatedInput.args.country,
+            attachmentCount: attachments.length,
           }
         );
-        
+
         clearTimeout(timeoutId);
-        
+
         const duration = Date.now() - startTime;
 
         this.metrics.recordMetric('search_duration', duration, 'ms', {
           query: validatedInput.args.query,
+          model: validatedInput.args.model || this.defaultModel,
           success: 'true',
         });
         this.metrics.incrementCounter('search_requests_total', 1, { status: 'success' });
         this.metrics.recordHistogram('search_result_count', result.length, {
           maxResults: validatedInput.args.maxResults?.toString(),
         });
-        
+
         traceLogger.info('Search task completed successfully', {
           resultCount: result.length,
           duration,
+          model: validatedInput.args.model || this.defaultModel,
         });
-        
+
         return {
           id,
           ok: true,
@@ -131,7 +167,7 @@ export class PerplexitySearchTool {
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      this.metrics.incrementCounter('search_requests_total', 1, { 
+      this.metrics.incrementCounter('search_requests_total', 1, {
         status: 'error',
         errorType: this.getErrorCode(error),
       });
@@ -139,15 +175,15 @@ export class PerplexitySearchTool {
         success: 'false',
         errorType: this.getErrorCode(error),
       });
-      
-      traceLogger.error('Search task failed', 
+
+      traceLogger.error('Search task failed',
         error instanceof Error ? error : new Error(String(error)),
         {
           duration,
           errorCode: this.getErrorCode(error),
         }
       );
-      
+
       return {
         id,
         ok: false,
@@ -241,37 +277,119 @@ export class PerplexitySearchTool {
     }
   }
 
-  private async performSearch(query: SearchQuery, signal: AbortSignal): Promise<SearchResult[]> {
+  private async performChatCompletion(query: SearchQuery, attachments: Attachment[], signal: AbortSignal): Promise<SearchResult[]> {
     try {
-      const searchParameters: any = {
-        query: query.query,
-        max_results: query.maxResults || 5,
+      // Build chat completion request
+      const messages: any[] = [
+        {
+          role: 'system',
+          content: 'You are a helpful AI assistant. Provide accurate, concise responses with citations when possible.',
+        }
+      ];
+
+      // Build user message with content and attachments
+      const userMessage: any = {
+        role: 'user',
+        content: [
+          { type: 'text', text: query.query }
+        ],
       };
 
-      if (query.country) {
-        searchParameters.search_domain_filter = [`.${query.country.toLowerCase()}`];
+      // Add attachments if present - use correct Perplexity API format
+      if (attachments.length > 0) {
+        for (const attachment of attachments) {
+          if (attachment.mimeType.startsWith('image/')) {
+            // Image attachment
+            userMessage.content.push({
+              type: 'image_url',
+              image_url: {
+                url: attachment.url
+              }
+            });
+          } else {
+            // Document/file attachment
+            userMessage.content.push({
+              type: 'file_url',
+              file_url: {
+                url: attachment.url
+              },
+              file_name: attachment.name
+            });
+          }
+        }
       }
 
-      const searchResponse = await this.client.search.create(searchParameters, { signal });
+      messages.push(userMessage);
 
-      if (searchResponse.results && Array.isArray(searchResponse.results)) {
-        return searchResponse.results.map((result: any) => ({
-          title: result.title || 'Untitled',
-          url: result.url || '',
-          snippet: result.snippet || '',
-          date: result.date || undefined,
-        }));
+      // Prepare chat completion parameters
+      const chatParams: any = {
+        model: query.model || this.defaultModel,
+        messages,
+        max_tokens: 4000,
+        temperature: 0.1,
+        top_p: 0.9,
+        search_domain_filter: query.country ? [`.${query.country.toLowerCase()}`] : undefined,
+        return_images: false,
+        return_related_questions: false,
+        search_recency_filter: undefined,
+        search_after_date_filter: undefined,
+        search_before_date_filter: undefined,
+        last_updated_after_filter: undefined,
+        last_updated_before_filter: undefined,
+        top_k: 0,
+        stream: false,
+        presence_penalty: 0,
+        frequency_penalty: 0,
+        disable_search: false,
+        enable_search_classifier: false,
+        web_search_options: {
+          search_context_size: 'high'
+        }
+      };
+
+      const response = await this.client.chat.completions.create(chatParams);
+
+      if (response.choices && response.choices.length > 0) {
+        const choice = response.choices[0];
+        const content = choice.message?.content || '';
+
+        // Parse response to extract search results if available
+        const results: SearchResult[] = [];
+
+        // Add main response as a search result
+        results.push({
+          title: 'AI Response',
+          url: 'https://www.perplexity.ai/',
+          snippet: content,
+          date: new Date().toISOString().split('T')[0],
+        });
+
+        // Add search results from response if available
+        if (response.search_results && Array.isArray(response.search_results)) {
+          response.search_results.forEach((result: any) => {
+            results.push({
+              title: result.title || 'Search Result',
+              url: result.url || '',
+              snippet: result.snippet || '',
+              date: result.date || undefined,
+            });
+          });
+        }
+
+        // Ensure we don't exceed the max results requested
+        const maxResults = query.maxResults || 5;
+        return results.slice(0, maxResults);
       }
 
       return [{
-        title: 'Search Result',
+        title: 'No Response',
         url: 'https://www.perplexity.ai/',
-        snippet: 'No content available',
+        snippet: 'No response received from the model',
         date: undefined,
       }];
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Search request timed out');
+        throw new Error('Chat completion request timed out');
       }
       throw error instanceof Error ? error : new Error(String(error));
     }
