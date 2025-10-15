@@ -79,7 +79,7 @@ setx PERPLEXITY_API_KEY "your-api-key"
 
 **Get your API key:** https://www.perplexity.ai/account/api/keys
 
-### 3️⃣ Start Searching (Simplified Interface)
+### 3️⃣ Start Searching
 
 ```bash
 # Simple search
@@ -88,10 +88,10 @@ pplx "latest AI developments"
 # Choose model for detailed analysis
 pplx --model sonar-pro "Explain quantum computing"
 
-# Analyze document (simplified syntax)
+# Analyze document
 pplx --file report.pdf "Summarize this document"
 
-# Analyze image (simplified syntax)
+# Analyze image
 pplx --image screenshot.png "What does this interface do?"
 
 # Document + image analysis
@@ -103,18 +103,6 @@ pplx --model sonar-deep-research "History of artificial intelligence"
 
 # See basic help
 pplx --help
-
-# See advanced options
-pplx --help-advanced
-```
-
-**🔄 Migration from v1.0.x:**
-```bash
-# OLD: pplx --format jsonl --input queries.json "search"
-# NEW: pplx --format jsonl --input queries.json "search"  # format flag unchanged
-
-# OLD: pplx --attach document.pdf "analyze"
-# NEW: pplx --file document.pdf "analyze"              # simplified syntax
 ```
 
 ## Usage Guide
