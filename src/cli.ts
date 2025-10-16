@@ -80,39 +80,33 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
 
 function showHelp() {
   console.error(`
-PPLX-Zero - Optimized Perplexity AI search CLI
+PPLX-Zero - Perplexity AI search CLI
 
 USAGE:
   pplx [OPTIONS] [QUERY...]
 
-BASIC OPTIONS:
-  -q, --query <query>         Search query (fast mode)
-  -f, --file <file>           Attach document for analysis
-  -i, --image <file>          Attach image for analysis
+OPTIONS:
   -m, --model <model>         AI model: sonar, sonar-pro, sonar-reasoning, sonar-deep-research
   -n, --max-results <n>       Maximum results per query (default: 5)
+  -c, --concurrency <n>       Concurrency for batch searches (default: 5)
+  -t, --timeout <ms>           Request timeout in milliseconds (default: 30000)
+  -f, --file <file>           Attach document for analysis
+  -i, --image <file>          Attach image for analysis
   -o, --format <format>       Output format: json|jsonl (default: json)
-
-PERFORMANCE OPTIONS:
-  --use-search-api             Use fast Search API (default: true)
-  --batch-size <n>            Batch size for processing (default: 20)
+  -q, --query <query>         Search query
 
 EXAMPLES:
-  # Fast search using Search API (500ms)
   pplx "latest AI developments"
 
-  # Detailed analysis using Chat API (20s)
-  pplx --model sonar-pro "Explain quantum computing in detail"
+  pplx --model sonar-pro "Explain quantum computing"
 
-  # Batch searches with optimized performance
-  pplx --use-search-api --concurrency 10 "AI trends" "ML breakthroughs"
-
-  # File analysis (requires Chat API)
   pplx --file report.pdf "Summarize this document"
 
-  # Performance comparison
-  pplx "test query"        # Search API (fast)
-  pplx --model sonar-pro "test query"  # Chat API (slow)
+  pplx --image screenshot.png "What is this showing?"
+
+  pplx --concurrency 3 "query 1" "query 2" "query 3"
+
+  pplx --max-results 10 "machine learning trends"
 
 Get your API key: https://www.perplexity.ai/account/api/keys
 Set environment variable: export PERPLEXITY_API_KEY="your-key"
@@ -126,7 +120,7 @@ if (cliOptions.help) {
 
 if (cliOptions.version) {
   const packageInfo = await import('../package.json', { assert: { type: 'json' } });
-  console.error(`pplx v${packageInfo.default.version} (Optimized Version)`);
+  console.error(`pplx v${packageInfo.default.version}`);
   process.exit(0);
 }
 
