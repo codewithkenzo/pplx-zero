@@ -48,6 +48,10 @@ export class HistoryManager {
     };
 
     try {
+      // Create query+date based file for individual searches
+      await this.createQueryDateFile(fullEntry);
+
+      // Also append to main history file for consolidated view
       const entryLine = JSON.stringify(fullEntry) + '\n';
       await fs.appendFile(this.config.historyPath, entryLine);
 
@@ -223,6 +227,120 @@ export class HistoryManager {
   }
 
   /**
+   * Create query+date based file for individual searches
+   */
+  private async createQueryDateFile(entry: HistoryEntry): Promise<void> {
+    try {
+      const date = new Date(entry.timestamp);
+      const dateStr = date.toISOString().slice(0, 10); // YYYY-MM-DD format
+      const timeStr = date.toISOString().slice(11, 19).replace(/:/g, '-'); // HH-MM-SS format
+
+      // Create filename from first query + date
+      const primaryQuery = entry.queries[0] || 'search';
+      const sanitizedQuery = this.sanitizeFilename(primaryQuery);
+      const filename = `${sanitizedQuery}_${dateStr}_${timeStr}.json`;
+
+      const filePath = join(this.config.sessionsPath, filename);
+
+      // Write complete entry data to individual file
+      const fileContent = JSON.stringify(entry, null, 2);
+      await fs.writeFile(filePath, fileContent, 'utf-8');
+    } catch (error) {
+      console.warn('Failed to create query+date file:', error);
+      // Don't throw error - this is a supplementary feature
+    }
+  }
+
+  /**
+   * Sanitize query for filename usage
+   */
+  private sanitizeFilename(query: string): string {
+    // Remove or replace invalid characters
+    let sanitized = query
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // Remove special characters except spaces and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .trim(); // Remove leading/trailing spaces/hyphens
+
+    // Limit length for filename
+    if (sanitized.length > 50) {
+      sanitized = sanitized.substring(0, 47) + '...';
+    }
+
+    // Ensure filename is not empty
+    if (!sanitized) {
+      sanitized = 'search';
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Get individual search files by query pattern
+   */
+  async getSearchFiles(queryPattern?: string): Promise<Array<{ filename: string; entry: HistoryEntry }>> {
+    try {
+      const files = await fs.readdir(this.config.sessionsPath);
+      const jsonFiles = files.filter(file => file.endsWith('.json'));
+
+      const searchFiles: Array<{ filename: string; entry: HistoryEntry }> = [];
+
+      for (const file of jsonFiles) {
+        if (queryPattern && !file.toLowerCase().includes(queryPattern.toLowerCase())) {
+          continue;
+        }
+
+        try {
+          const filePath = join(this.config.sessionsPath, file);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const entry = JSON.parse(content) as HistoryEntry;
+          searchFiles.push({ filename: file, entry });
+        } catch {
+          // Skip malformed files
+          continue;
+        }
+      }
+
+      // Sort by timestamp (newest first)
+      searchFiles.sort((a, b) =>
+        new Date(b.entry.timestamp).getTime() - new Date(a.entry.timestamp).getTime()
+      );
+
+      return searchFiles;
+    } catch (error) {
+      console.error('Failed to get search files:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get search by filename (query+date format)
+   */
+  async getSearchByFilename(filename: string): Promise<HistoryEntry | null> {
+    try {
+      const filePath = join(this.config.sessionsPath, filename);
+      const content = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(content) as HistoryEntry;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Delete search file by filename
+   */
+  async deleteSearchFile(filename: string): Promise<boolean> {
+    try {
+      const filePath = join(this.config.sessionsPath, filename);
+      await fs.unlink(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Format multiple entries for display
    */
   async formatHistory(limit?: number): Promise<string> {
@@ -239,5 +357,31 @@ export class HistoryManager {
     const formattedEntries = entries.map(entry => this.formatEntry(entry)).join('\n\n');
 
     return header + formattedEntries + footer;
+  }
+
+  /**
+   * Format search files for display (query+date naming)
+   */
+  async formatSearchFiles(queryPattern?: string, limit?: number): Promise<string> {
+    const searchFiles = await this.getSearchFiles(queryPattern);
+
+    if (searchFiles.length === 0) {
+      return `📝 No search files found${queryPattern ? ` matching "${queryPattern}"` : ''}.`;
+    }
+
+    const displayFiles = limit ? searchFiles.slice(0, limit) : searchFiles;
+
+    const header = `📁 Search Files (${displayFiles.length} files${queryPattern ? ` matching "${queryPattern}"` : ''})\n`;
+    const footer = searchFiles.length > displayFiles.length ? `\n... and ${searchFiles.length - displayFiles.length} more files` : '';
+
+    const formattedFiles = displayFiles.map(({ filename, entry }) => {
+      const date = new Date(entry.timestamp).toLocaleString();
+      const queries = entry.queries.slice(0, 2).join(', ');
+      const more = entry.queries.length > 2 ? ` +${entry.queries.length - 2}` : '';
+
+      return `📄 ${filename}\n   ${date} | ${entry.model || 'default'} | ${entry.queryCount} queries | ${entry.success ? '✅' : '❌'}\n   ${queries}${more}`;
+    }).join('\n\n');
+
+    return header + formattedFiles + footer;
   }
 }

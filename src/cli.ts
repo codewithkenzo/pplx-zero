@@ -4,17 +4,21 @@ import { dirname } from 'node:path';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
-import { OptimizedPerplexitySearchEngine, fastSearch, fastMultiSearch } from './core.js';
+import { spawn } from 'node:child_process';
+import { OptimizedPerplexitySearchEngine, fastSearch, fastMultiSearch, processFileAttachments, getApiKey } from './core.js';
+import { ErrorCode } from './types.js';
 import { HistoryManager } from './history/manager.js';
 import { ExportFormatter } from './export/formatter.js';
 import { UpdateChecker } from './update/checker.js';
+import { PplxUpdateStrategy } from './update/strategy.js';
 import { FileUtils } from './utils/file.js';
-import type { SearchResult } from './schema.js';
-import type { ExportOptions } from './export/types.js';
-import { randomUUID } from 'node:crypto';
+import { CliFormatter } from './cli/formatter.js';
+import { initializeSignalHandling, addCleanupCallback } from './utils/signals.js';
+import { processStreamingOutput } from './utils/output.js';
+import { ConfigManager, initializeConfig } from './config/manager.js';
+import type { SearchResult } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 interface OptimizedCliOptions {
   // Basic options
@@ -29,7 +33,17 @@ interface OptimizedCliOptions {
   help?: boolean;
   'help-advanced'?: boolean;
   history?: boolean;
+  'search-files'?: boolean;
   'update-check'?: boolean;
+  'auto-update'?: boolean;
+
+  // Configuration options
+  config?: string;
+  'save-config'?: boolean;
+  'show-config'?: boolean;
+  'reset-config'?: boolean;
+  'validate-config'?: boolean;
+  profile?: string;
 
   // Export options
   export?: string;
@@ -49,6 +63,9 @@ interface OptimizedCliOptions {
   'use-search-api'?: boolean;
   'max-results'?: string;
   'batch-size'?: string;
+
+  // Streaming options
+  stream?: boolean;
 }
 
 interface ParsedArgs {
@@ -80,7 +97,17 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
     help: { type: 'boolean' },
     'help-advanced': { type: 'boolean' },
     history: { type: 'boolean', short: 'h' },
+    'search-files': { type: 'boolean' },
     'update-check': { type: 'boolean' },
+    'auto-update': { type: 'boolean' },
+
+    // Configuration options
+    config: { type: 'string' },
+    'save-config': { type: 'boolean' },
+    'show-config': { type: 'boolean' },
+    'reset-config': { type: 'boolean' },
+    'validate-config': { type: 'boolean' },
+    profile: { type: 'string' },
 
     // Export options
     export: { type: 'string' },
@@ -100,6 +127,9 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
     'use-search-api': { type: 'boolean', default: true },
     'max-results': { type: 'string', short: 'n', default: '5' },
     'batch-size': { type: 'string', default: '20' },
+
+    // Streaming options
+    stream: { type: 'boolean' },
   },
   allowPositionals: true,
 }) as ParsedArgs;
@@ -120,13 +150,24 @@ SEARCH OPTIONS:
   -i, --image <file>          Attach image for analysis
   -o, --format <format>       Output format: json|jsonl (default: json)
   -q, --query <query>         Search query
+      --stream                Enable real-time streaming output (Ctrl+C to cancel)
+
+CONFIGURATION OPTIONS:
+      --config <path>         Use custom configuration file
+      --save-config           Save current CLI options to configuration
+      --show-config           Show effective configuration
+      --validate-config       Validate configuration and show status
+      --reset-config          Reset configuration to defaults
+      --profile <name>        Use named configuration profile
 
 EXPORT OPTIONS:
       --export <filename>     Export results to file (supports .txt, .md, .json)
 
 HISTORY OPTIONS:
   -h, --history [n]           Show search history (last n searches, max 50)
+      --search-files          Show individual search files with query+date naming
       --update-check          Check for available updates
+      --auto-update           Install available updates and relaunch
 
 HELP OPTIONS:
       --help                  Show this help message
@@ -135,6 +176,10 @@ HELP OPTIONS:
 EXAMPLES:
   # Single search
   pplx "latest AI developments"
+
+  # Streaming search (real-time output)
+  pplx --stream "latest AI developments"
+  pplx --stream --model sonar-pro "What are the recent tech trends?"
 
   # Multi-search (automatic detection)
   pplx "AI trends 2024" "Rust vs Go" "Web3 adoption"
@@ -145,6 +190,16 @@ EXAMPLES:
   # Search with file attachments
   pplx --file report.pdf "Summarize this document"
   pplx --image screenshot.png "What is this showing?"
+
+  # Streaming with attachments
+  pplx --stream --file document.pdf "Analyze this document in real-time"
+
+  # Configuration management
+  pplx --show-config                          # Show current configuration
+  pplx --validate-config                      # Validate configuration
+  pplx --save-config --model sonar-pro        # Save current options to config
+  pplx --profile work "company research"       # Use named profile
+  pplx --reset-config                         # Reset to defaults
 
   # View history
   pplx --history          # Show all history (up to 50)
@@ -159,10 +214,19 @@ EXAMPLES:
   pplx --model sonar-reasoning "Explain quantum computing"
   pplx --model sonar-deep-research --export research.pdf "comprehensive AI analysis"
 
+  # Streaming with advanced models
+  pplx --stream --model sonar-reasoning "Step by step analysis of quantum computing"
+
 HISTORY & EXPORT:
   • History is automatically saved to ~/.pplx-zero/history/
   • Export files are saved with cleaned, readable text
   • All searches are logged with metadata and performance metrics
+
+CONFIGURATION:
+  • Configuration is automatically discovered in: ~/.pplx-zero/config.json, ~/.config/pplx-zero/config.json
+  • Project-specific configs can be placed as: .pplx-zero.json or config.json
+  • CLI flags always override configuration file settings
+  • Environment variables override both: PPLX_MODEL, PPLX_MAX_RESULTS, PPLX_CONCURRENCY, etc.
 
 Get your API key: https://www.perplexity.ai/account/api/keys
 Set environment variable: export PERPLEXITY_API_KEY="your-key"
@@ -170,39 +234,6 @@ Set environment variable: export PERPLEXITY_API_KEY="your-key"
   process.exit(0);
 }
 
-// Handle special commands first
-if (historyOverride || cliOptions.history) {
-  const historyManager = new HistoryManager();
-  const limit = args.find(arg => /^\d+$/.test(arg)) ? parseInt(args.find(arg => /^\d+$/.test(arg))!) : undefined;
-
-  if (limit && limit > 0) {
-    const history = await historyManager.formatHistory(limit);
-    console.log(history);
-  } else {
-    const history = await historyManager.formatHistory();
-    console.log(history);
-  }
-  process.exit(0);
-}
-
-if (cliOptions['update-check']) {
-  const updateChecker = new UpdateChecker();
-  const versionInfo = await updateChecker.getVersionInfo();
-  console.log(versionInfo);
-  await updateChecker.showUpdateNotification(true);
-  process.exit(0);
-}
-
-if (cliOptions.help) {
-  showHelp();
-}
-
-if (cliOptions.version) {
-  const updateChecker = new UpdateChecker();
-  const versionInfo = await updateChecker.getVersionInfo();
-  console.error(versionInfo);
-  process.exit(0);
-}
 
 function parseNumber(value: string | undefined, defaultValue: number, min: number, max: number, name: string): number {
   if (!value) return defaultValue;
@@ -220,6 +251,74 @@ function logEvent(level: 'info' | 'error', event: string, data?: any): void {
     event,
     data
   }));
+}
+
+/**
+ * Load and initialize configuration
+ */
+async function loadConfiguration(): Promise<ConfigManager | null> {
+  try {
+    const configManager = await initializeConfig({
+      configFile: cliOptions.config,
+      autoCreate: true,
+      allowInvalid: false,
+      environment: process.env.PPLX_ENV,
+    });
+
+    // Set profile if specified
+    if (cliOptions.profile) {
+      const profileResult = await configManager.switchProfile(cliOptions.profile);
+      if (!profileResult.success) {
+        console.error(`Warning: Failed to switch to profile "${cliOptions.profile}": ${profileResult.error}`);
+      }
+    }
+
+    return configManager;
+  } catch (error) {
+    // Don't fail the entire CLI if config loading fails, just warn
+    console.error(`Warning: Failed to load configuration: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Merge CLI options with configuration defaults
+ */
+function mergeOptionsWithConfig(cliOptions: OptimizedCliOptions, configManager: ConfigManager | null) {
+  if (!configManager) {
+    return cliOptions;
+  }
+
+  const defaults = configManager.getDefaults();
+  const merged = { ...cliOptions };
+
+  // Apply defaults where CLI options are not provided
+  if (!cliOptions.model && defaults.model) {
+    merged.model = defaults.model;
+  }
+  if (!cliOptions['max-results'] && defaults.maxResults) {
+    merged['max-results'] = defaults.maxResults.toString();
+  }
+  if (!cliOptions.concurrency && defaults.concurrency) {
+    merged.concurrency = defaults.concurrency.toString();
+  }
+  if (!cliOptions.timeout && defaults.timeout) {
+    merged.timeout = defaults.timeout.toString();
+  }
+  if (!cliOptions['batch-size'] && defaults.batchSize) {
+    merged['batch-size'] = defaults.batchSize.toString();
+  }
+  if (!cliOptions.format && defaults.outputFormat) {
+    merged.format = defaults.outputFormat;
+  }
+  if (!cliOptions.stream && defaults.stream !== undefined) {
+    merged.stream = defaults.stream;
+  }
+  if (cliOptions['use-search-api'] === undefined && defaults.useSearchApi !== undefined) {
+    merged['use-search-api'] = defaults.useSearchApi;
+  }
+
+  return merged;
 }
 
 async function executeFastSearch(query: string, options: {
@@ -311,18 +410,12 @@ async function executeChatWithAttachments(
   const startTime = performance.now();
 
   try {
-    const apiKey = process.env.PERPLEXITY_API_KEY;
-    if (!apiKey) {
-      return {
-        success: false,
-        error: "Perplexity API key not found in environment variables",
-      };
-    }
+    // Use unified environment variable handling
+    const apiKey = getApiKey();
+    const engine = new OptimizedPerplexitySearchEngine({ apiKey });
 
-    const engine = new OptimizedPerplexitySearchEngine(apiKey);
-
-    // Process file attachments
-    const attachments = await engine['processFileAttachments'](filePaths);
+    // Process file attachments using public API
+    const attachments = await processFileAttachments(filePaths);
 
     const result = await engine.executeChatWithAttachments(query, attachments, {
       model: options.model,
@@ -370,19 +463,14 @@ async function executeAdvancedModel(
   const startTime = performance.now();
 
   try {
-    const apiKey = process.env.PERPLEXITY_API_KEY;
-    if (!apiKey) {
-      return {
-        success: false,
-        error: "Perplexity API key not found in environment variables",
-      };
-    }
-
-    const engine = new OptimizedPerplexitySearchEngine(apiKey);
+    // Use unified environment variable handling
+    const apiKey = getApiKey();
+    const engine = new OptimizedPerplexitySearchEngine({ apiKey });
 
     let attachments;
     if (options.filePaths && options.filePaths.length > 0) {
-      attachments = await engine['processFileAttachments'](options.filePaths);
+      // Process file attachments using public API
+      attachments = await processFileAttachments(options.filePaths);
     }
 
     const result = await engine.executeAdvancedModel(query, {
@@ -407,6 +495,126 @@ async function executeAdvancedModel(
     return {
       success: false,
       executionTime: performance.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Execute streaming search with real-time output
+ */
+async function executeStreamingSearch(
+  query: string,
+  options: {
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+    filePaths?: string[];
+  },
+  abortSignal: AbortSignal
+): Promise<{
+  success: boolean;
+  content?: string;
+  citations?: string[];
+  images?: any[];
+  executionTime: number;
+  tokenCount: number;
+  error?: string;
+}> {
+  const startTime = performance.now();
+
+  try {
+    // Use unified environment variable handling
+    const apiKey = getApiKey();
+    const engine = new OptimizedPerplexitySearchEngine({ apiKey });
+
+    let attachments;
+    let messages: any[] = [];
+
+    // Process file attachments if provided
+    if (options.filePaths && options.filePaths.length > 0) {
+      attachments = await processFileAttachments(options.filePaths);
+
+      // Create messages with attachments
+      const userMessage: any = {
+        role: "user",
+        content: [
+          { type: "text", text: query }
+        ]
+      };
+
+      for (const attachment of attachments) {
+        if (attachment.type === 'image') {
+          userMessage.content.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${attachment.mimeType};base64,${attachment.content.toString('base64')}`
+            }
+          });
+        } else {
+          const textContent = attachment.content instanceof Buffer
+            ? attachment.content.toString('utf-8')
+            : attachment.content;
+
+          userMessage.content.push({
+            type: "text",
+            text: `\n\n[Document: ${attachment.filename}]\n${textContent}`
+          });
+        }
+      }
+
+      messages = [
+        {
+          role: "system",
+          content: "You are a helpful AI assistant. Analyze the provided files and query accurately. Provide citations when possible."
+        },
+        userMessage
+      ];
+    } else {
+      // Standard messages without attachments
+      messages = [
+        { role: "system", content: "You are a helpful AI assistant. Provide accurate, concise responses with citations when possible." },
+        { role: "user", content: query }
+      ];
+    }
+
+    // Execute streaming chat completion
+    const stream = engine.executeStreamingChatCompletion(query, {
+      model: options.model || 'sonar',
+      maxTokens: options.maxTokens || 4000,
+      temperature: options.temperature || 0.1,
+      messages,
+    }, abortSignal);
+
+    // Process streaming output
+    const result = await processStreamingOutput(stream, {
+      useColors: true,
+      showProgress: true,
+      bufferDelay: 50,
+      enableTypewriterEffect: false,
+    }, abortSignal);
+
+    const executionTime = performance.now() - startTime;
+
+    if (result.success) {
+      return {
+        success: true,
+        executionTime,
+        tokenCount: result.tokenCount,
+      };
+    } else {
+      return {
+        success: false,
+        executionTime,
+        tokenCount: result.tokenCount,
+        error: result.error,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      executionTime: performance.now() - startTime,
+      tokenCount: 0,
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -502,25 +710,102 @@ async function main(): Promise<void> {
   const sessionId = randomUUID();
 
   try {
-    // Check for updates (non-blocking)
-    const updateChecker = new UpdateChecker();
-    updateChecker.showUpdateNotification().catch(() => {
-      // Don't let update checks fail the main execution
-    });
+    // Load configuration first
+    const configManager = await loadConfiguration();
 
-    const apiKey = process.env.PERPLEXITY_API_KEY;
-    if (!apiKey) {
-      throw new Error('PERPLEXITY_API_KEY environment variable is required');
+    // Handle configuration-specific commands
+    if (cliOptions['show-config']) {
+      if (!configManager) {
+        console.error('No configuration available');
+        process.exit(1);
+      }
+      const config = configManager.getEffectiveConfig();
+      console.log(JSON.stringify(config, null, 2));
+      process.exit(0);
     }
 
-    // Parse options
-    const maxResults = parseNumber(cliOptions['max-results'], 5, 1, 20, 'Max results');
-    const concurrency = parseNumber(cliOptions.concurrency, 5, 1, 20, 'Concurrency');
-    const timeout = parseNumber(cliOptions.timeout, 30000, 1000, 300000, 'Timeout');
-    const batchSize = parseNumber(cliOptions['batch-size'], 20, 1, 100, 'Batch size');
+    if (cliOptions['validate-config']) {
+      if (!configManager) {
+        console.error('No configuration to validate');
+        process.exit(1);
+      }
+      const validation = configManager.validateConfig();
+      if (validation.valid) {
+        console.log('✓ Configuration is valid');
+        if (validation.warnings.length > 0) {
+          console.log('Warnings:');
+          validation.warnings.forEach(warning => console.log(`  - ${warning}`));
+        }
+        process.exit(0);
+      } else {
+        console.error('✗ Configuration is invalid:');
+        validation.errors.forEach(error => console.error(`  - ${error}`));
+        if (validation.warnings.length > 0) {
+          console.log('Warnings:');
+          validation.warnings.forEach(warning => console.log(`  - ${warning}`));
+        }
+        process.exit(1);
+      }
+    }
 
-    const useSearchAPI = cliOptions['use-search-api'] !== false;
-    const outputFormat = cliOptions.format as 'json' | 'jsonl';
+    if (cliOptions['reset-config']) {
+      if (!configManager) {
+        console.error('No configuration available to reset');
+        process.exit(1);
+      }
+      const result = await configManager.resetConfig();
+      if (result.success) {
+        console.log('✓ Configuration reset to defaults');
+        process.exit(0);
+      } else {
+        console.error(`✗ Failed to reset configuration: ${result.error}`);
+        process.exit(1);
+      }
+    }
+
+    // Merge CLI options with configuration
+    const mergedOptions = mergeOptionsWithConfig(cliOptions, configManager);
+
+    // Check for updates (non-blocking) but skip during auto-update scenarios
+    const skipUpdateCheck = mergedOptions['auto-update'] || process.env.PPLX_AUTO_UPDATE_RELAUNCH === '1';
+
+    if (!skipUpdateCheck) {
+      const updateChecker = new UpdateChecker();
+      updateChecker.showUpdateNotification().then((versionInfo) => {
+        // If update is available, show enhanced notification
+        if (versionInfo && versionInfo.updateAvailable) {
+          const updateMessage = CliFormatter.formatUpdateNotification(versionInfo.current, versionInfo.latest);
+          console.error(CliFormatter.supportsColors() ? updateMessage : CliFormatter.formatPlainText(updateMessage));
+        }
+      }).catch(() => {
+        // Don't let update checks fail the main execution
+      });
+    }
+
+    // Initialize signal handling and get abort signal
+    const abortSignal = initializeSignalHandling();
+
+    // Add cleanup callbacks for proper resource management
+    addCleanupCallback(async () => {
+      // Log cancellation to event log
+      logEvent('info', 'operation_cancelled', {
+        sessionId,
+        queryCount: queries.length,
+        mode: mergedOptions.stream ? 'streaming' : 'standard',
+      });
+    });
+
+    // Use unified environment variable handling with fallback
+    const apiKey = getApiKey();
+
+    // Parse options using merged configuration
+    const maxResults = parseNumber(mergedOptions['max-results'], 5, 1, 20, 'Max results');
+    const concurrency = parseNumber(mergedOptions.concurrency, 5, 1, 20, 'Concurrency');
+    const timeout = parseNumber(mergedOptions.timeout, 30000, 1000, 300000, 'Timeout');
+    const batchSize = parseNumber(mergedOptions['batch-size'], 20, 1, 100, 'Batch size');
+
+    const useSearchAPI = mergedOptions['use-search-api'] !== false;
+    const outputFormat = mergedOptions.format as 'json' | 'jsonl';
 
     if (!['json', 'jsonl'].includes(outputFormat)) {
       throw new Error('Format must be json or jsonl');
@@ -528,12 +813,12 @@ async function main(): Promise<void> {
 
     // Validate model
     let selectedModel: string | undefined;
-    if (cliOptions.model) {
+    if (mergedOptions.model) {
       const validModels = ['sonar', 'sonar-pro', 'sonar-reasoning', 'sonar-deep-research'];
-      if (!validModels.includes(cliOptions.model)) {
-        throw new Error(`Invalid model: ${cliOptions.model}. Valid models: ${validModels.join(', ')}`);
+      if (!validModels.includes(mergedOptions.model)) {
+        throw new Error(`Invalid model: ${mergedOptions.model}. Valid models: ${validModels.join(', ')}`);
       }
-      selectedModel = cliOptions.model;
+      selectedModel = mergedOptions.model;
     }
 
     logEvent('info', 'cli_initialized', {
@@ -544,18 +829,43 @@ async function main(): Promise<void> {
       batchSize,
       model: selectedModel,
       format: outputFormat,
-      hasAttachments: !!(cliOptions.file || cliOptions.image ||
-        (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0)) > 0
+      hasAttachments: !!(mergedOptions.file || mergedOptions.image ||
+        (mergedOptions.attach?.length || 0) + (mergedOptions['attach-image']?.length || 0)) > 0,
+      configFile: configManager ? 'loaded' : 'none',
+      profile: configManager?.getCurrentProfile() || 'none'
     });
+
+    // Save current CLI options to config if requested
+    if (cliOptions['save-config'] && configManager) {
+      const configUpdates: any = {
+        defaults: {
+          model: selectedModel,
+          maxResults,
+          concurrency,
+          timeout,
+          batchSize,
+          outputFormat: outputFormat as 'json' | 'jsonl',
+          stream: mergedOptions.stream,
+          useSearchApi: useSearchAPI,
+        }
+      };
+
+      const saveResult = await configManager.updateConfig(configUpdates);
+      if (saveResult.success) {
+        console.log('✓ Current options saved to configuration');
+      } else {
+        console.error(`Warning: Failed to save configuration: ${saveResult.error}`);
+      }
+    }
 
     // Determine execution mode
     let queries: string[] = [];
 
-    if (cliOptions.query) {
-      queries = [cliOptions.query];
+    if (mergedOptions.query) {
+      queries = [mergedOptions.query];
     } else if (commandLineQueries.length > 0) {
       queries = commandLineQueries;
-    } else if (cliOptions.stdin) {
+    } else if (mergedOptions.stdin) {
       // Read from stdin
       const readLineInterface = createInterface({
         input: process.stdin,
@@ -578,9 +888,9 @@ async function main(): Promise<void> {
           }
         }
       }
-    } else if (cliOptions.input) {
+    } else if (mergedOptions.input) {
       // Read from file
-      const fileContent = await Bun.file(cliOptions.input).text();
+      const fileContent = await Bun.file(mergedOptions.input).text();
       const parsed = JSON.parse(fileContent);
 
       if (parsed.queries && Array.isArray(parsed.queries)) {
@@ -596,17 +906,33 @@ async function main(): Promise<void> {
       throw new Error('No queries provided. Use --help for usage information.');
     }
 
+    // Validate streaming mode compatibility
+    if (mergedOptions.stream) {
+      // Streaming is not compatible with certain options
+      if (queries.length > 1) {
+        throw new Error('Streaming mode is only supported for single queries. Remove --stream for multi-query searches.');
+      }
+
+      if (mergedOptions.export) {
+        throw new Error('Streaming mode is not compatible with export functionality. Remove --stream or --export.');
+      }
+
+      if (outputFormat === 'jsonl') {
+        console.error('⚠️ Warning: Streaming with JSONL output format may produce mixed output. Consider using default JSON format.');
+      }
+    }
+
     logEvent('info', 'queries_loaded', {
-      source: cliOptions.stdin ? 'stdin' : cliOptions.input || 'cli',
+      source: mergedOptions.stdin ? 'stdin' : mergedOptions.input || 'cli',
       queryCount: queries.length
     });
 
     // Collect all file paths
     const filePaths: string[] = [];
-    if (cliOptions.file) filePaths.push(cliOptions.file);
-    if (cliOptions.image) filePaths.push(cliOptions.image);
-    if (cliOptions.attach) filePaths.push(...cliOptions.attach);
-    if (cliOptions['attach-image']) filePaths.push(...cliOptions['attach-image']);
+    if (mergedOptions.file) filePaths.push(mergedOptions.file);
+    if (mergedOptions.image) filePaths.push(mergedOptions.image);
+    if (mergedOptions.attach) filePaths.push(...mergedOptions.attach);
+    if (mergedOptions['attach-image']) filePaths.push(...mergedOptions['attach-image']);
 
     // Determine execution mode and routing
     const hasAttachments = filePaths.length > 0;
@@ -627,13 +953,19 @@ async function main(): Promise<void> {
       // Single query execution
       const query = queries[0];
 
-      if (isAdvancedModel) {
+      // Handle streaming mode
+      if (mergedOptions.stream) {
+        results = await executeStreamingSearch(query, {
+          model: selectedModel,
+          filePaths: hasAttachments ? filePaths : undefined,
+        }, abortSignal);
+      } else if (isAdvancedModel) {
         // Use advanced model routing
         results = await executeAdvancedModel(query, {
           model: selectedModel!,
           filePaths: hasAttachments ? filePaths : undefined,
-          webhook: cliOptions.webhook,
-          async: cliOptions.async,
+          webhook: mergedOptions.webhook,
+          async: mergedOptions.async,
         });
       } else if (hasAttachments) {
         // Use chat with attachments
@@ -654,10 +986,16 @@ async function main(): Promise<void> {
         ok: results.success,
         query,
         executionTime: results.executionTime,
-        mode: isAdvancedModel ? 'advanced-model' : (hasAttachments ? 'chat-attachments' : 'search-api'),
+        mode: mergedOptions.stream ? 'streaming' : (isAdvancedModel ? 'advanced-model' : (hasAttachments ? 'chat-attachments' : 'search-api')),
       };
 
-      if (isAdvancedModel) {
+      // Handle streaming-specific output
+      if (mergedOptions.stream) {
+        if (results.tokenCount !== undefined) {
+          output.tokenCount = results.tokenCount;
+          output.tokensPerSecond = results.tokenCount / (results.executionTime / 1000);
+        }
+      } else if (isAdvancedModel) {
         if (results.isAsync) {
           output.requestId = results.requestId;
           output.status = results.status;
@@ -690,22 +1028,32 @@ async function main(): Promise<void> {
 
       // Handle export if requested
       let exportPath: string | undefined;
-      if (cliOptions.export) {
+      if (mergedOptions.export) {
         try {
-          exportPath = await exportResults(output, queries, cliOptions.export, metadata);
-          console.error(`📄 Results exported to: ${exportPath}`);
+          exportPath = await exportResults(output, queries, mergedOptions.export, metadata);
+          const exportStats = await FileUtils.getFileInfo(exportPath);
+          const exportMessage = CliFormatter.formatExportStatus(
+            exportPath.split('/').pop() || exportPath,
+            exportPath.endsWith('.md') ? 'markdown' : exportPath.endsWith('.json') ? 'json' : 'text',
+            exportStats.size
+          );
+          console.error(CliFormatter.supportsColors() ? exportMessage : CliFormatter.formatPlainText(exportMessage));
         } catch (error) {
-          console.error('❌ Export failed:', error instanceof Error ? error.message : String(error));
+          const errorMessage = CliFormatter.formatError(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+          console.error(CliFormatter.supportsColors() ? errorMessage : CliFormatter.formatPlainText(errorMessage));
         }
       }
 
       // Log to history
       await logToHistory(queries, output, metadata, exportPath);
 
-      if (outputFormat === 'jsonl') {
-        console.log(JSON.stringify(output));
-      } else {
-        console.log(JSON.stringify(output, null, 2));
+      // For streaming mode, don't output JSON to stdout as content was already streamed
+      if (!mergedOptions.stream) {
+        if (outputFormat === 'jsonl') {
+          console.log(JSON.stringify(output));
+        } else {
+          console.log(JSON.stringify(output, null, 2));
+        }
       }
 
     } else {
@@ -726,8 +1074,8 @@ async function main(): Promise<void> {
               result = await executeAdvancedModel(query, {
                 model: selectedModel!,
                 filePaths: hasAttachments ? filePaths : undefined,
-                webhook: cliOptions.webhook,
-                async: cliOptions.async,
+                webhook: mergedOptions.webhook,
+                async: mergedOptions.async,
               });
             } else if (hasAttachments) {
               result = await executeChatWithAttachments(query, filePaths, {
@@ -812,9 +1160,9 @@ async function main(): Promise<void> {
 
         // Handle export if requested
         let exportPath: string | undefined;
-        if (cliOptions.export) {
+        if (mergedOptions.export) {
           try {
-            exportPath = await exportResults(output, queries, cliOptions.export, metadata);
+            exportPath = await exportResults(output, queries, mergedOptions.export, metadata);
             console.error(`📄 Results exported to: ${exportPath}`);
           } catch (error) {
             console.error('❌ Export failed:', error instanceof Error ? error.message : String(error));
@@ -870,9 +1218,9 @@ async function main(): Promise<void> {
 
         // Handle export if requested
         let exportPath: string | undefined;
-        if (cliOptions.export) {
+        if (mergedOptions.export) {
           try {
-            exportPath = await exportResults(output, queries, cliOptions.export, metadata);
+            exportPath = await exportResults(output, queries, mergedOptions.export, metadata);
             console.error(`📄 Results exported to: ${exportPath}`);
           } catch (error) {
             console.error('❌ Export failed:', error instanceof Error ? error.message : String(error));
@@ -915,11 +1263,31 @@ async function main(): Promise<void> {
       stack: error instanceof Error ? error.stack : undefined,
     });
 
+    // Format error with clean CLI output
+    const formattedError = CliFormatter.formatError(`Execution failed: ${errorMessage}`);
+    console.error(CliFormatter.supportsColors() ? formattedError : CliFormatter.formatPlainText(formattedError));
+
+    // Also output structured error for logging with canonical error codes
+    let canonicalErrorCode = ErrorCode.UNEXPECTED_ERROR;
+    const errorMessageLower = errorMessage.toLowerCase();
+
+    if (errorMessageLower.includes('api key') || errorMessageLower.includes('unauthorized')) {
+      canonicalErrorCode = ErrorCode.API_KEY_MISSING;
+    } else if (errorMessageLower.includes('rate limit') || errorMessageLower.includes('too many requests')) {
+      canonicalErrorCode = ErrorCode.RATE_LIMIT_ERROR;
+    } else if (errorMessageLower.includes('timeout') || errorMessageLower.includes('aborted')) {
+      canonicalErrorCode = ErrorCode.TIMEOUT_ERROR;
+    } else if (errorMessageLower.includes('network') || errorMessageLower.includes('enotfound') || errorMessageLower.includes('connection')) {
+      canonicalErrorCode = ErrorCode.NETWORK_ERROR;
+    } else if (errorMessageLower.includes('validation') || errorMessageLower.includes('invalid')) {
+      canonicalErrorCode = ErrorCode.VALIDATION_ERROR;
+    }
+
     const errorOutput = {
       version: '1.0.0',
       ok: false,
       error: {
-        code: 'EXECUTION_ERROR',
+        code: canonicalErrorCode,
         message: errorMessage,
         details: error instanceof Error ? error.stack : undefined,
       },
@@ -931,17 +1299,141 @@ async function main(): Promise<void> {
   }
 }
 
-process.on('SIGINT', () => {
-  logEvent('info', 'termination_signal', { signal: 'SIGINT' });
-  process.exit(130);
-});
+// These signal handlers are now managed by the signal handling utility
+// The initializeSignalHandling() call in main() handles SIGINT/SIGTERM properly
 
-process.on('SIGTERM', () => {
-  logEvent('info', 'termination_signal', { signal: 'SIGTERM' });
-  process.exit(143);
-});
+(async () => {
+  // Handle special commands first
+  if (historyOverride || cliOptions.history) {
+    const historyManager = new HistoryManager();
+    const limit = args.find(arg => /^\d+$/.test(arg)) ? parseInt(args.find(arg => /^\d+$/.test(arg))!) : undefined;
 
-main().catch((error) => {
+    if (limit && limit > 0) {
+      const entries = await historyManager.getHistory(limit);
+      const formattedHistory = CliFormatter.formatHistoryList(entries);
+      console.log(CliFormatter.supportsColors() ? formattedHistory : CliFormatter.formatPlainText(formattedHistory));
+    } else {
+      const entries = await historyManager.getHistory();
+      const formattedHistory = CliFormatter.formatHistoryList(entries);
+      console.log(CliFormatter.supportsColors() ? formattedHistory : CliFormatter.formatPlainText(formattedHistory));
+    }
+    process.exit(0);
+  }
+
+  if (cliOptions['search-files']) {
+    const historyManager = new HistoryManager();
+    const queryPattern = args.find(arg => !arg.startsWith('-') && !/^\d+$/.test(arg));
+    const limit = args.find(arg => /^\d+$/.test(arg)) ? parseInt(args.find(arg => /^\d+$/.test(arg))!) : undefined;
+
+    const searchFiles = await historyManager.getSearchFiles(queryPattern);
+    const formattedFiles = CliFormatter.formatSearchFilesList(limit ? searchFiles.slice(0, limit) : searchFiles);
+    console.log(CliFormatter.supportsColors() ? formattedFiles : CliFormatter.formatPlainText(formattedFiles));
+    process.exit(0);
+  }
+
+  if (cliOptions['auto-update']) {
+    const updateLockFile = join(homedir(), '.pplx-zero', '.updating.lock');
+    const currentPid = process.pid;
+
+    try {
+      // Check if update is already in progress
+      try {
+        const lockContent = await Bun.file(updateLockFile).text();
+        const lockPid = parseInt(lockContent.trim());
+
+        // Check if the process is still running
+        try {
+          process.kill(lockPid, 0); // Signal 0 just checks if process exists
+          // If we reach here, process is still running, exit silently
+          process.exit(0);
+        } catch {
+          // Process is dead, remove stale lock
+          await unlink(updateLockFile);
+        }
+      } catch {
+        // Lock file doesn't exist, proceed
+      }
+
+      // Create lock file with current PID
+      await writeFile(updateLockFile, currentPid.toString());
+
+      const updateStrategy = new PplxUpdateStrategy();
+
+      try {
+        // Check for update silently
+        const result = await updateStrategy.attemptUpdate();
+
+        if (result.success) {
+          // Store original command for perfect relaunch
+          const originalCommand = {
+            args: process.argv.slice(1),
+            cwd: process.cwd(),
+            env: { ...process.env }
+          };
+
+          // Remove --auto-update from arguments for relaunch
+          const relaunchArgs = originalCommand.args.filter(arg => arg !== '--auto-update');
+
+          // Silent relaunch without showing any update messages
+          const subprocess = spawn(process.argv[0], relaunchArgs, {
+            stdio: 'inherit',
+            env: originalCommand.env,
+            shell: false,
+            cwd: originalCommand.cwd
+          });
+
+          subprocess.on('exit', (code) => {
+            // Clean up lock file on exit
+            unlink(updateLockFile).catch(() => {});
+            process.exit(code || 0);
+          });
+
+          subprocess.on('error', (error) => {
+            // Clean up lock file on error
+            unlink(updateLockFile).catch(() => {});
+            process.exit(1);
+          });
+
+          return; // Don't exit parent process immediately
+        } else {
+          // Silent failure - just continue with normal execution
+          // This handles cases where no update is available
+        }
+      } catch (error) {
+        // Silent failure - continue with normal execution
+        // This handles network errors, permission issues, etc.
+      } finally {
+        // Always clean up lock file
+        await unlink(updateLockFile);
+      }
+    } catch (error) {
+      // If lock file creation fails, continue with normal execution
+    }
+
+    // Continue to main execution if auto-update fails or no update needed
+  }
+
+  if (cliOptions['update-check']) {
+    const updateChecker = new UpdateChecker();
+    const versionInfo = await updateChecker.getVersionInfo();
+    console.log(versionInfo);
+    await updateChecker.showUpdateNotification(true);
+    process.exit(0);
+  }
+
+  if (cliOptions.help) {
+    showHelp();
+  }
+
+  if (cliOptions.version) {
+    const updateChecker = new UpdateChecker();
+    const versionInfo = await updateChecker.getVersionInfo();
+    console.error(versionInfo);
+    process.exit(0);
+  }
+
+  await main();
+})().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });

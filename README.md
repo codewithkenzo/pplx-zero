@@ -22,6 +22,7 @@ A fast TypeScript CLI for Perplexity AI search with multimodal support. Built wi
 - **🤖 AI Models** - Sonar, Sonar Pro, Sonar Deep Research, Sonar Reasoning
 - **🛡️ Type Safe** - Full Zod validation and TypeScript support
 - **🌍 Cross-Platform** - Native Bun runtime support
+- **🔄 Auto-Update** - Background update checking to stay current
 
 ## Quick Start
 
@@ -105,6 +106,59 @@ pplx --model sonar-deep-research "History of artificial intelligence"
 pplx --help
 ```
 
+## Auto-Update
+
+PPLX-Zero includes intelligent auto-update functionality that runs in the background to keep your CLI current.
+
+### How It Works
+
+- **Background Checking**: Automatically checks for updates every 24 hours when you run searches
+- **Non-Blocking**: Never slows down your search queries - updates happen in the background
+- **Smart Caching**: Uses intelligent caching to avoid unnecessary network requests
+- **Silent by Default**: Runs quietly without interrupting your workflow
+
+### Update Commands
+
+```bash
+# Check for updates manually
+pplx update --check
+
+# Install available updates automatically
+pplx update --auto
+
+# Show version information
+pplx version
+
+# Check updates with version command
+pplx version --check-updates
+```
+
+### Update Methods
+
+The auto-update system tries multiple package managers in order of preference:
+
+1. **npm global** (`npm update -g pplx-zero`)
+2. **bun global** (`bun update -g pplx-zero`)
+3. **yarn global** (`yarn global upgrade pplx-zero`)
+4. **pnpm global** (`pnpm update -g pplx-zero`)
+
+If automatic updates fail, you'll get helpful instructions to update manually.
+
+### Configuration
+
+Auto-update settings are stored in `~/.pplx-zero/update-cache.json`:
+
+- **Check Interval**: 24 hours by default
+- **Quiet Mode**: Silent operation to not interrupt workflow
+- **Auto Install**: Disabled by default for safety
+
+### Privacy & Performance
+
+- **Minimal Network**: Only checks npm registry for version information
+- **No Data Collection**: Never sends search queries or personal data
+- **Fast Performance**: Cached results prevent repeated network requests
+- **Local Only**: All update logic runs locally on your machine
+
 ## Usage Guide
 
 ### Command Line Options
@@ -121,7 +175,7 @@ pplx -f document.pdf "Summarize this"
 pplx --input queries.json -c 10 -t 60000
 
 # See all options
-pplx --help-advanced
+pplx --help
 ```
 
 **Essential Commands:**
@@ -217,6 +271,15 @@ console.log(result);
 | `--version` | `-v` | boolean | - | Show version |
 | `--help` | `-h` | boolean | - | Show basic help |
 
+### Update Commands
+
+| Command | Options | Description |
+|---------|---------|-------------|
+| `pplx update` | `--check` | Check for available updates |
+| `pplx update` | `--auto` | Install available updates automatically |
+| `pplx version` | `--check-updates` | Show version and check for updates |
+| `pplx version` | `--verbose` | Show detailed version information |
+
 ### Advanced Options (Power Users)
 
 | Option | Short | Type | Default | Description |
@@ -230,7 +293,7 @@ console.log(result);
 | `--attach-image` | - | string[] | - | Attach image files (multiple) |
 | `--async` | - | boolean | false | Process requests asynchronously |
 | `--webhook` | - | string | - | Webhook URL for async notifications |
-| `--help-advanced` | - | boolean | - | Show advanced help with all options |
+ |
 
 ### Quick Reference
 
@@ -242,7 +305,7 @@ pplx -f doc.pdf -m sonar-pro "analyze this"
 pplx -I batch.json -c 10 -t 60000 --format jsonl "process all"
 
 # See all available options
-pplx --help-advanced
+pplx --help
 ```
 
 ### AI Models

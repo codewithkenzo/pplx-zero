@@ -5,22 +5,28 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "pplx": "dist/cli.js"
+    "pplx": "dist/index.js"
   },
   "scripts": {
-    "dev": "bun run src/cli.ts",
-    "build": "rm -rf dist && bun build src/cli.ts --target node --outdir dist",
-    "build:binary": "bun build --compile src/cli.ts --outfile=dist/pplx",
+    "dev": "bun run src/cli/index.ts",
+    "dev:legacy": "bun run src/cli.ts",
+    "build": "rm -rf dist && bun build src/cli/index.ts --target node --outdir dist",
+    "build:legacy": "rm -rf dist && bun build src/cli.ts --target node --outdir dist",
+    "build:binary": "bun build --compile src/cli/index.ts --outfile=dist/pplx",
+    "build:binary:legacy": "bun build --compile src/cli.ts --outfile=dist/pplx-legacy",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "typecheck": "bun tsc --noEmit",
     "lint": "bun run --bun eslint src/**/*.ts",
     "lint:fix": "bun run --bun eslint src/**/*.ts --fix",
     "clean": "rm -rf dist",
-    "dev:debug": "bun --inspect src/cli.ts"
+    "dev:debug": "bun --inspect src/cli/index.ts",
+    "dev:debug:legacy": "bun --inspect src/cli.ts"
   },
   "dependencies": {
     "@perplexity-ai/perplexity_ai": "^0.11.0",
+    "abort-controller": "^3.0.0",
+    "commander": "^12.0.0",
     "dotenv": "^16.3.1",
     "zod": "^3.22.4"
   },

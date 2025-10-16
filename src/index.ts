@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import Perplexity from '@perplexity-ai/perplexity_ai';
 import {
   SearchInputV1Schema,
   BatchSearchInputV1Schema,
@@ -22,9 +21,10 @@ import { ResilienceManager, DEFAULT_CONFIGS } from './util/resilience.js';
 import { Logger, MetricsCollector, createLogger } from './util/monitoring.js';
 import { processAttachments, validateAttachmentInputs } from './util/attachments.js';
 import { createAsyncJob, startAsyncJob, completeAsyncJob, failAsyncJob, sendWebhook, getAsyncJob } from './util/async.js';
+import { UnifiedPerplexityEngine, getApiKey, type FileAttachment } from './engine/unified.js';
 
 export class PerplexitySearchTool {
-  private client: Perplexity;
+  private engine: UnifiedPerplexityEngine;
   private workspace: WorkspaceSandbox;
   private resilience: ResilienceManager;
   private logger: Logger;
@@ -40,12 +40,14 @@ export class PerplexitySearchTool {
       defaultModel?: SonarModel;
     } = {}
   ) {
-    const apiKey = process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY;
-    if (!apiKey) {
-      throw new Error('PERPLEXITY_API_KEY or PERPLEXITY_AI_API_KEY environment variable is required');
-    }
+    // Use unified engine with environment variable fallback
+    this.engine = new UnifiedPerplexityEngine({
+      apiKey: getApiKey(),
+      defaultModel: options.defaultModel || 'sonar',
+      enableResilience: true,
+      logLevel: options.logLevel || 'info',
+    });
 
-    this.client = new Perplexity({ apiKey });
     this.workspace = new WorkspaceSandbox(workspacePath);
     this.defaultModel = options.defaultModel || 'sonar';
 
@@ -275,114 +277,37 @@ export class PerplexitySearchTool {
 
   private async performChatCompletion(query: SearchQuery, attachments: Attachment[], signal: AbortSignal): Promise<SearchResult[]> {
     try {
-      // Build chat completion request
-      const messages: any[] = [
-        {
-          role: 'system',
-          content: 'You are a helpful AI assistant. Provide accurate, concise responses with citations when possible.',
-        }
-      ];
+      // Convert Attachment interface to FileAttachment interface for unified engine
+      const fileAttachments: FileAttachment[] = attachments.map(att => ({
+        path: att.url, // Use URL as path for external attachments
+        type: att.mimeType.startsWith('image/') ? 'image' : 'document',
+        mimeType: att.mimeType,
+        content: att.content || Buffer.from(''), // Handle base64 content
+        filename: att.name || 'attachment',
+      }));
 
-      // Build user message with content and attachments
-      const userMessage: any = {
-        role: 'user',
-        content: [
-          { type: 'text', text: query.query }
-        ],
-      };
-
-      // Add attachments if present - use correct Perplexity API format
-      if (attachments.length > 0) {
-        for (const attachment of attachments) {
-          if (attachment.mimeType.startsWith('image/')) {
-            // Image attachment
-            userMessage.content.push({
-              type: 'image_url',
-              image_url: {
-                url: attachment.url
-              }
-            });
-          } else {
-            // Document/file attachment
-            userMessage.content.push({
-              type: 'file_url',
-              file_url: {
-                url: attachment.url
-              },
-              file_name: attachment.name
-            });
-          }
-        }
-      }
-
-      messages.push(userMessage);
-
-      // Prepare chat completion parameters
-      const chatParams: any = {
+      // Use unified engine's chat completion with attachments
+      const result = await this.engine.executeChatWithAttachments(query.query, fileAttachments, {
         model: query.model || this.defaultModel,
-        messages,
-        max_tokens: 4000,
+        maxTokens: 4000,
         temperature: 0.1,
-        top_p: 0.9,
-        search_domain_filter: query.country ? [`.${query.country.toLowerCase()}`] : undefined,
-        return_images: false,
-        return_related_questions: false,
-        search_recency_filter: undefined,
-        search_after_date_filter: undefined,
-        search_before_date_filter: undefined,
-        last_updated_after_filter: undefined,
-        last_updated_before_filter: undefined,
-        top_k: 0,
-        stream: false,
-        presence_penalty: 0,
-        frequency_penalty: 0,
-        disable_search: false,
-        enable_search_classifier: false,
-        web_search_options: {
-          search_context_size: 'high'
-        }
-      };
+      });
 
-      const response = await this.client.chat.completions.create(chatParams);
+      // Convert response back to SearchResult format
+      const results: SearchResult[] = [];
 
-      if (response.choices && response.choices.length > 0) {
-        const choice = response.choices[0];
-        const content = choice.message?.content || '';
-
-        // Parse response to extract search results if available
-        const results: SearchResult[] = [];
-
-        // Add main response as a search result
-        results.push({
-          title: 'AI Response',
-          url: 'https://www.perplexity.ai/',
-          snippet: content,
-          date: new Date().toISOString().split('T')[0],
-        });
-
-        // Add search results from response if available
-        if (response.search_results && Array.isArray(response.search_results)) {
-          response.search_results.forEach((result: any) => {
-            results.push({
-              title: result.title || 'Search Result',
-              url: result.url || '',
-              snippet: result.snippet || '',
-              date: result.date || undefined,
-            });
-          });
-        }
-
-        // Ensure we don't exceed the max results requested
-        const maxResults = query.maxResults || 5;
-        return results.slice(0, maxResults);
-      }
-
-      return [{
-        title: 'No Response',
+      // Add main response as a search result
+      results.push({
+        title: 'AI Response',
         url: 'https://www.perplexity.ai/',
-        snippet: 'No response received from the model',
-        date: undefined,
-      }];
+        snippet: result.content,
+        date: new Date().toISOString().split('T')[0],
+      });
+
+      // Ensure we don't exceed the max results requested
+      const maxResults = query.maxResults || 5;
+      return results.slice(0, maxResults);
+
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('Chat completion request timed out');
@@ -420,17 +345,27 @@ export class PerplexitySearchTool {
     resilienceStats: any;
     timestamp: string;
   } {
-    const apiKeyPresent = !!(process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY);
-    const workspaceValid = this.workspace.getWorkspacePath() !== null;
-    const resilienceStats = this.resilience.getStats();
-    
-    return {
-      healthy: apiKeyPresent && workspaceValid,
-      apiKeyPresent,
-      workspaceValid,
-      resilienceStats,
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      const apiKeyPresent = !!getApiKey();
+      const workspaceValid = this.workspace.getWorkspacePath() !== null;
+      const resilienceStats = this.resilience.getStats();
+
+      return {
+        healthy: apiKeyPresent && workspaceValid,
+        apiKeyPresent,
+        workspaceValid,
+        resilienceStats,
+        timestamp: new Date().toISOString(),
+      };
+    } catch {
+      return {
+        healthy: false,
+        apiKeyPresent: false,
+        workspaceValid: false,
+        resilienceStats: {},
+        timestamp: new Date().toISOString(),
+      };
+    }
   }
 
   getMetrics(): {
@@ -455,7 +390,11 @@ export class PerplexitySearchTool {
 
   registerHealthChecks(healthChecker: any): void {
     healthChecker.registerCheck('api_key', async () => {
-      return !!(process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY);
+      try {
+        return !!getApiKey();
+      } catch {
+        return false;
+      }
     });
 
     healthChecker.registerCheck('workspace', async () => {
@@ -469,6 +408,11 @@ export class PerplexitySearchTool {
     healthChecker.registerCheck('resilience', async () => {
       const stats = this.resilience.getStats();
       return stats.circuitBreaker.state !== 'OPEN';
+    });
+
+    healthChecker.registerCheck('engine', async () => {
+      const health = await this.engine.healthCheck();
+      return health.healthy;
     });
   }
 }
