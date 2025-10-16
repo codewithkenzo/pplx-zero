@@ -134,52 +134,54 @@ async function executeSearch(
 ): Promise<SearchExecutionResult> {
   const startTime = performance.now();
   const hasAttachments = filePaths.length > 0;
-  const isAdvancedModel = options.model && ['sonar-reasoning', 'sonar-deep-research'].includes(options.model);
+  const isAdvancedModel = options.model && ['sonar-pro', 'sonar-reasoning', 'sonar-deep-research'].includes(options.model);
 
   try {
     let result: any;
     let mode: SearchExecutionResult['mode'];
 
-    if (isAdvancedModel) {
-      mode = 'advanced-model';
+    if (isAdvancedModel || hasAttachments) {
+      // ALL advanced models and attachments use chat completions API
+      mode = isAdvancedModel ? 'advanced-model' : 'chat-attachments';
       const apiKey = getApiKey();
       const engine = new OptimizedPerplexitySearchEngine({ apiKey });
 
       const attachments = hasAttachments ? await processFileAttachments(filePaths) : undefined;
 
-      const advancedResult = await engine.executeAdvancedModel(query, {
-        model: options.model,
-        attachments,
-        webhook: options.webhook,
-      });
+      let response: any;
 
-      result = {
-        success: true,
-        content: advancedResult.content,
-        requestId: advancedResult.requestId,
-        status: advancedResult.status,
-        citations: advancedResult.citations,
-        images: advancedResult.images,
-        isAsync: advancedResult.isAsync,
-      };
-    } else if (hasAttachments) {
-      mode = 'chat-attachments';
-      const apiKey = getApiKey();
-      const engine = new OptimizedPerplexitySearchEngine({ apiKey });
+      if (isAdvancedModel) {
+        // Use advanced model handler
+        response = await engine.executeAdvancedModel(query, {
+          model: options.model,
+          attachments,
+          webhook: options.webhook,
+        });
 
-      const attachments = await processFileAttachments(filePaths);
+        result = {
+          success: true,
+          content: response.content,
+          requestId: response.requestId,
+          status: response.status,
+          citations: response.citations,
+          images: response.images,
+          isAsync: response.isAsync,
+        };
+      } else {
+        // Use chat with attachments handler
+        response = await engine.executeChatWithAttachments(query, attachments!, {
+          model: options.model,
+        });
 
-      const chatResult = await engine.executeChatWithAttachments(query, attachments, {
-        model: options.model,
-      });
-
-      result = {
-        success: true,
-        content: chatResult.content,
-        citations: chatResult.citations,
-        images: chatResult.images,
-      };
+        result = {
+          success: true,
+          content: response.content,
+          citations: response.citations,
+          images: response.images,
+        };
+      }
     } else {
+      // Pure text queries use search API
       mode = 'search-api';
       const searchParams: { maxResults: number; model?: string } = {
         maxResults: options.maxResults,
@@ -204,23 +206,37 @@ async function executeSearch(
       }
     };
 
-    if (result.results) {
-      searchResult.results = result.results;
-    }
-    if (result.content) {
-      searchResult.results = result as any;
-    }
-    if (result.error) {
-      searchResult.error = result.error;
+    // Handle different result formats
+    if (result.results && Array.isArray(result.results)) {
+      // Search API results
+      searchResult.results = result;
+    } else if (result.content !== undefined) {
+      // Chat completion results
+      searchResult.results = result;
+    } else if (result.error) {
+      searchResult.error = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
     }
 
     return searchResult;
   } catch (error) {
+    // Properly serialize error
+    let errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Try to parse JSON errors
+    if (typeof error === 'string' && error.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(error);
+        errorMessage = parsed.message || error;
+      } catch {
+        // Keep original error message
+      }
+    }
+
     return {
       success: false,
       executionTime: performance.now() - startTime,
-      mode: isAdvancedModel ? 'advanced-model' : 'search-api',
-      error: error instanceof Error ? error.message : String(error),
+      mode: isAdvancedModel ? 'advanced-model' : (hasAttachments ? 'chat-attachments' : 'search-api'),
+      error: errorMessage,
       metadata: {
         queryCount: 1,
         model: options.model,
@@ -241,7 +257,7 @@ async function executeMultiSearch(
 ): Promise<MultiSearchExecutionResult> {
   const startTime = performance.now();
   const hasAttachments = filePaths.length > 0;
-  const isAdvancedModel = options.model && ['sonar-reasoning', 'sonar-deep-research'].includes(options.model);
+  const isAdvancedModel = options.model && ['sonar-pro', 'sonar-reasoning', 'sonar-deep-research'].includes(options.model);
   const needsAdvancedRouting = hasAttachments || isAdvancedModel;
 
   try {
@@ -557,24 +573,30 @@ export async function handleSearchCommand(options: {
         mode: searchResult.mode,
       };
 
-      if (searchResult.mode === 'advanced-model') {
-        const advancedResults = searchResult.results as any;
-        if (advancedResults?.isAsync) {
-          output.requestId = advancedResults.requestId;
-          output.status = advancedResults.status;
-          output.isAsync = true;
-        } else {
-          output.content = advancedResults?.content;
-          output.citations = advancedResults?.citations;
-          output.images = advancedResults?.images;
+      // Handle different modes properly
+      if (searchResult.results && typeof searchResult.results === 'object') {
+        const results = searchResult.results as any;
+
+        if (searchResult.mode === 'advanced-model') {
+          if (results.isAsync && results.requestId) {
+            output.requestId = results.requestId;
+            output.status = results.status;
+            output.isAsync = true;
+          } else {
+            output.content = results.content || '';
+            output.citations = Array.isArray(results.citations) ? results.citations : [];
+            output.images = Array.isArray(results.images) ? results.images : [];
+          }
+        } else if (searchResult.mode === 'chat-attachments') {
+          output.content = results.content || '';
+          output.citations = Array.isArray(results.citations) ? results.citations : [];
+          output.images = Array.isArray(results.images) ? results.images : [];
+        } else if (searchResult.mode === 'search-api') {
+          // Search API results
+          if (results.results && Array.isArray(results.results)) {
+            output.results = results.results;
+          }
         }
-      } else if (searchResult.mode === 'chat-attachments') {
-        const chatResults = searchResult.results as any;
-        output.content = chatResults?.content;
-        output.citations = chatResults?.citations;
-        output.images = chatResults?.images;
-      } else {
-        output.results = searchResult.results || [];
       }
 
       if (searchResult.error) {
@@ -598,8 +620,29 @@ export async function handleSearchCommand(options: {
         mode: multiResult.mode,
       };
 
+      // Ensure proper serialization of results
+      if (multiResult.results && Array.isArray(multiResult.results)) {
+        output.results = multiResult.results.map(result => {
+          if (typeof result === 'object' && result !== null) {
+            // Ensure no circular references and proper serialization
+            return {
+              ok: result.ok,
+              query: result.query,
+              content: result.content,
+              results: result.results,
+              citations: Array.isArray(result.citations) ? result.citations : [],
+              images: Array.isArray(result.images) ? result.images : [],
+              error: result.error,
+              model: result.model,
+              duration: result.duration,
+            };
+          }
+          return result;
+        });
+      }
+
       if (multiResult.error) {
-        output.error = multiResult.error;
+        output.error = typeof multiResult.error === 'string' ? multiResult.error : JSON.stringify(multiResult.error);
       }
 
       results = { success: multiResult.success };
@@ -639,17 +682,30 @@ export async function handleSearchCommand(options: {
       mode: output.mode,
     }, exportPath);
 
-    // Output results
+    // Output results with proper serialization
     if (outputFormat === 'jsonl') {
       if (Array.isArray(output.results)) {
         for (const result of output.results) {
-          console.log(JSON.stringify({ ...result, mode: output.mode }));
+          // Ensure each result is properly serialized
+          const serializedResult = typeof result === 'object' ? JSON.parse(JSON.stringify(result)) : result;
+          console.log(JSON.stringify({ ...serializedResult, mode: output.mode }));
         }
       } else {
-        console.log(JSON.stringify(output));
+        console.log(JSON.stringify(output, null, 0));
       }
     } else {
-      console.log(JSON.stringify(output, null, 2));
+      // Use custom replacer to handle circular references and ensure proper serialization
+      const seen = new WeakSet();
+      const jsonString = JSON.stringify(output, (key, value) => {
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) {
+            return '[Circular]';
+          }
+          seen.add(value);
+        }
+        return value;
+      }, 2);
+      console.log(jsonString);
     }
 
     const totalDuration = Date.now() - startTime;

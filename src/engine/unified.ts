@@ -359,10 +359,23 @@ export class UnifiedPerplexityEngine {
         this.config.timeout
       );
 
+      // Properly extract content from chat completion response
+      let content = '';
+      if (response && response.choices && response.choices.length > 0) {
+        const choice = response.choices[0];
+        if (choice && choice.message && choice.message.content) {
+          content = choice.message.content;
+        }
+      }
+
+      // Extract citations and images safely
+      const citations = response && Array.isArray(response.citations) ? response.citations : [];
+      const images = response && Array.isArray(response.images) ? response.images : [];
+
       return {
-        content: response.choices[0]?.message?.content || '',
-        citations: response.citations,
-        images: response.images,
+        content,
+        citations,
+        images,
         executionTime: performance.now() - startTime,
       };
     } catch (error) {
@@ -396,8 +409,8 @@ export class UnifiedPerplexityEngine {
     try {
       const { model, attachments, webhook } = options;
 
-      // Deep research and reasoning models use chat completions
-      if (model === 'sonar-deep-research' || model === 'sonar-reasoning') {
+      // Advanced models (sonar-pro, sonar-deep-research, sonar-reasoning) use chat completions
+      if (model === 'sonar-pro' || model === 'sonar-deep-research' || model === 'sonar-reasoning') {
         let messages: any[] = [];
 
         if (attachments && attachments.length > 0) {
@@ -434,6 +447,8 @@ export class UnifiedPerplexityEngine {
               role: "system",
               content: model === 'sonar-deep-research'
                 ? "You are a helpful AI assistant. Conduct thorough research and analysis. Provide detailed, well-cited responses."
+                : model === 'sonar-pro'
+                ? "You are a helpful AI assistant. Provide comprehensive, detailed responses with thorough analysis and citations."
                 : "You are a helpful AI assistant. Use step-by-step reasoning to provide accurate, well-reasoned responses."
             },
             userMessage
@@ -444,6 +459,8 @@ export class UnifiedPerplexityEngine {
               role: "system",
               content: model === 'sonar-deep-research'
                 ? "You are a helpful AI assistant. Conduct thorough research and analysis. Provide detailed, well-cited responses."
+                : model === 'sonar-pro'
+                ? "You are a helpful AI assistant. Provide comprehensive, detailed responses with thorough analysis and citations."
                 : "You are a helpful AI assistant. Use step-by-step reasoning to provide accurate, well-reasoned responses."
             },
             { role: "user", content: query }
@@ -460,16 +477,31 @@ export class UnifiedPerplexityEngine {
           this.config.timeout
         );
 
+        // Properly extract content from chat completion response
+        let content = '';
+        if (response && response.choices && response.choices.length > 0) {
+          const choice = response.choices[0];
+          if (choice && choice.message && choice.message.content) {
+            content = choice.message.content;
+          }
+        }
+
+        // Extract citations and images safely
+        const citations = response && Array.isArray(response.citations) ? response.citations : [];
+        const images = response && Array.isArray(response.images) ? response.images : [];
+
         return {
-          content: response.choices[0]?.message?.content || '',
-          citations: response.citations,
-          images: response.images,
+          content,
+          citations,
+          images,
           executionTime: performance.now() - startTime,
           isAsync: false,
         };
       }
     } catch (error) {
-      throw this.formatError(error);
+      // Format error properly for serialization
+      const formattedError = this.formatError(error);
+      throw new Error(JSON.stringify(formattedError));
     }
 
     // Default return for unsupported models
@@ -529,11 +561,25 @@ export class UnifiedPerplexityEngine {
         this.config.timeout
       );
 
+      // Properly extract content from chat completion response
+      let content = '';
+      if (response && response.choices && response.choices.length > 0) {
+        const choice = response.choices[0];
+        if (choice && choice.message && choice.message.content) {
+          content = choice.message.content;
+        }
+      }
+
+      // Extract additional fields safely
+      const citations = response && Array.isArray(response.citations) ? response.citations : [];
+      const images = response && Array.isArray(response.images) ? response.images : [];
+      const relatedQuestions = response && Array.isArray(response.related_questions) ? response.related_questions : [];
+
       return {
-        content: response.choices[0]?.message?.content || '',
-        citations: response.citations,
-        images: response.images,
-        relatedQuestions: response.related_questions,
+        content,
+        citations,
+        images,
+        relatedQuestions,
         executionTime: performance.now() - startTime,
       };
     } catch (error) {
@@ -825,6 +871,18 @@ export class UnifiedPerplexityEngine {
     message: string;
     details?: Record<string, unknown>;
   } {
+    // Handle stringified errors (from JSON.parse)
+    if (typeof error === 'string') {
+      try {
+        const parsed = JSON.parse(error);
+        if (parsed.code && parsed.message) {
+          return parsed;
+        }
+      } catch {
+        // Not a JSON string, continue with normal processing
+      }
+    }
+
     if (error instanceof PerplexitySearchError) {
       return {
         code: error.code as ErrorCode,

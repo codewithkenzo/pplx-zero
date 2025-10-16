@@ -34,14 +34,13 @@ export class UpdateChecker {
    * Get current version from package.json
    */
   private async getCurrentVersion(): Promise<string> {
+    // Import the version utility to use its robust path resolution
+    const { getVersion } = await import('../utils/version.js');
     try {
-      const packagePath = join(process.cwd(), 'package.json');
-      const packageContent = await fs.readFile(packagePath, 'utf-8');
-      const packageInfo: PackageInfo = JSON.parse(packageContent);
-      return packageInfo.version;
+      return await getVersion();
     } catch (error) {
       console.error('Failed to read current version:', error);
-      return 'unknown';
+      return '1.1.4'; // Use known version as fallback
     }
   }
 

@@ -27,12 +27,20 @@ export async function handleVersionCommand(options: {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const formattedError = CliFormatter.formatError(`Version command failed: ${errorMessage}`);
-    console.error(CliFormatter.supportsColors() ? formattedError : CliFormatter.formatPlainText(formattedError));
+
+    // Show fallback version even on error
+    const fallbackVersion = 'pplx-zero v1.1.4';
+    console.log(fallbackVersion);
+
+    // Only show error if not a simple version lookup issue
+    if (!errorMessage.includes('ENOENT') && !errorMessage.includes('package.json')) {
+      const formattedError = CliFormatter.formatError(`Warning: ${errorMessage}`);
+      console.error(CliFormatter.supportsColors() ? formattedError : CliFormatter.formatPlainText(formattedError));
+    }
 
     return {
-      exitCode: 1,
-      error: errorMessage,
+      exitCode: 0,
+      output: fallbackVersion,
     };
   }
 }
@@ -41,59 +49,52 @@ export async function handleVersionCommand(options: {
  * Handle version display only
  */
 async function handleVersionDisplay(verbose: boolean): Promise<CommandResult> {
-  try {
-    const versionInfo = await getVersionInfo();
-    const formattedVersion = await formatVersionInfo(verbose);
+  const versionInfo = await getVersionInfo();
+  const formattedVersion = await formatVersionInfo(verbose);
 
-    console.error(CliFormatter.supportsColors() ? formattedVersion : CliFormatter.formatPlainText(formattedVersion));
+  // Use console.log for version output (not console.error)
+  const output = CliFormatter.supportsColors() ? formattedVersion : CliFormatter.formatPlainText(formattedVersion);
+  console.log(output);
 
-    return {
-      exitCode: 0,
-      output: `${versionInfo.name} v${versionInfo.version}`,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    // Fallback to basic version info
-    console.error('pplx-zero v1.1.4');
-
-    return {
-      exitCode: 0,
-      output: 'pplx-zero v1.1.4',
-    };
-  }
+  return {
+    exitCode: 0,
+    output: `${versionInfo.name} v${versionInfo.version}`,
+  };
 }
 
 /**
  * Handle version display with update check
  */
 async function handleVersionWithUpdateCheck(verbose: boolean): Promise<CommandResult> {
+  const updateChecker = new UpdateChecker();
+
+  // Get version info
+  const versionInfo = await updateChecker.getVersionInfo();
+  const cleanVersionInfo = CliFormatter.supportsColors() ? versionInfo : CliFormatter.formatPlainText(versionInfo);
+
+  // Display version info
+  console.log(cleanVersionInfo);
+
   try {
-    const updateChecker = new UpdateChecker();
-
-    // Get version info
-    const versionInfo = await updateChecker.getVersionInfo();
-
-    // Display version info
-    console.error(CliFormatter.supportsColors() ? versionInfo : CliFormatter.formatPlainText(versionInfo));
-
     // Check for updates
-    const notificationResult = await updateChecker.showUpdateNotification(true);
+    const updateCheckResult = await updateChecker.checkForUpdates(true);
 
-    if (notificationResult?.updateAvailable) {
+    if (updateCheckResult.updateAvailable && updateCheckResult.latest !== 'unknown') {
       const updateMessage = CliFormatter.formatUpdateNotification(
-        notificationResult.current,
-        notificationResult.latest
+        updateCheckResult.current,
+        updateCheckResult.latest
       );
-      console.log(CliFormatter.supportsColors() ? updateMessage : CliFormatter.formatPlainText(updateMessage));
+      const cleanUpdateMessage = CliFormatter.supportsColors() ? updateMessage : CliFormatter.formatPlainText(updateMessage);
+      console.log(cleanUpdateMessage);
 
       return {
         exitCode: 0,
-        output: `Update available: ${notificationResult.current} → ${notificationResult.latest}`,
+        output: `Update available: ${updateCheckResult.current} → ${updateCheckResult.latest}`,
       };
     } else {
       const upToDateMessage = CliFormatter.formatSuccess('You are using the latest version');
-      console.log(CliFormatter.supportsColors() ? upToDateMessage : CliFormatter.formatPlainText(upToDateMessage));
+      const cleanUpToDateMessage = CliFormatter.supportsColors() ? upToDateMessage : CliFormatter.formatPlainText(upToDateMessage);
+      console.log(cleanUpToDateMessage);
 
       return {
         exitCode: 0,
@@ -102,13 +103,9 @@ async function handleVersionWithUpdateCheck(verbose: boolean): Promise<CommandRe
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-
-    // Still show version even if update check fails
-    const versionInfo = await formatVersionInfo(verbose);
-    console.error(CliFormatter.supportsColors() ? versionInfo : CliFormatter.formatPlainText(versionInfo));
-
     const warningMessage = CliFormatter.formatWarning(`Update check failed: ${errorMessage}`);
-    console.error(CliFormatter.supportsColors() ? warningMessage : CliFormatter.formatPlainText(warningMessage));
+    const cleanWarning = CliFormatter.supportsColors() ? warningMessage : CliFormatter.formatPlainText(warningMessage);
+    console.error(cleanWarning);
 
     return {
       exitCode: 0,

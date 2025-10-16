@@ -398,37 +398,53 @@ export class CliFormatter {
    * Check if terminal supports colors
    */
   static supportsColors(): boolean {
-    return process.stdout.isTTY && process.env.TERM !== 'dumb';
+    // Check if we're in a TTY and not a dumb terminal
+    const isTTY = process.stdout.isTTY;
+    const isNotDumb = process.env.TERM !== 'dumb';
+    const isWindows = process.platform === 'win32';
+
+    // On Windows, enable colors for common terminals
+    if (isWindows) {
+      const term = process.env.TERM_PROGRAM || '';
+      return isTTY && (term.includes('vscode') || term.includes('hyper') || term.includes('terminal') || isNotDumb);
+    }
+
+    return isTTY && isNotDumb;
   }
 
   /**
    * Get plain text version (no colors/symbols)
    */
   static formatPlainText(text: string): string {
-    if (!this.supportsColors()) {
-      // Remove color codes and replace symbols with text
-      return text
-        .replace(/\x1b\[[0-9;]*m/g, '') // Remove color codes
-        .replace(/[✅❌⚠️ℹ️🔍⏳🚀📄📁📊🕐⚙️✨]/g, (match) => {
-          const symbolMap: Record<string, string> = {
-            '✅': '[OK]',
-            '❌': '[ERROR]',
-            '⚠️': '[WARN]',
-            'ℹ️': '[INFO]',
-            '🔍': '[SEARCH]',
-            '⏳': '[PROCESSING]',
-            '🚀': '[UPDATE]',
-            '📄': '[FILE]',
-            '📁': '[FOLDER]',
-            '📊': '[CHART]',
-            '🕐': '[TIME]',
-            '⚙️': '[SETTINGS]',
-            '✨': '[SPARKLES]',
-          };
-          return symbolMap[match] || match;
-        });
+    // Always remove color codes
+    let cleanText = text.replace(/\x1b\[[0-9;]*m/g, '');
+
+    // Replace unicode symbols with ASCII alternatives for better compatibility
+    cleanText = cleanText.replace(/[✅❌⚠️ℹ️🔍⏳🚀📄📁📊🕐⚙️✨🔗]/g, (match) => {
+      const symbolMap: Record<string, string> = {
+        '✅': '[OK]',
+        '❌': '[ERROR]',
+        '⚠️': '[WARNING]',
+        'ℹ️': '[INFO]',
+        '🔍': '[SEARCH]',
+        '⏳': '[PROCESSING]',
+        '🚀': '[UPDATE]',
+        '📄': '[FILE]',
+        '📁': '[FOLDER]',
+        '📊': '[CHART]',
+        '🕐': '[TIME]',
+        '⚙️': '[SETTINGS]',
+        '✨': '[SPARKLES]',
+        '🔗': '[LINK]',
+      };
+      return symbolMap[match] || match;
+    });
+
+    // Ensure proper UTF-8 encoding by normalizing the string
+    if (typeof cleanText.normalize === 'function') {
+      cleanText = cleanText.normalize('NFC');
     }
 
-    return text;
+    return cleanText;
   }
 }
