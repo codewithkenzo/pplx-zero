@@ -83,7 +83,7 @@ function showHelp() {
 PPLX-Zero - Optimized Perplexity AI search CLI
 
 USAGE:
-  pplx-opt [OPTIONS] [QUERY...]
+  pplx [OPTIONS] [QUERY...]
 
 BASIC OPTIONS:
   -q, --query <query>         Search query (fast mode)
@@ -99,20 +99,20 @@ PERFORMANCE OPTIONS:
 
 EXAMPLES:
   # Fast search using Search API (500ms)
-  pplx-opt "latest AI developments"
+  pplx "latest AI developments"
 
   # Detailed analysis using Chat API (20s)
-  pplx-opt --model sonar-pro "Explain quantum computing in detail"
+  pplx --model sonar-pro "Explain quantum computing in detail"
 
   # Batch searches with optimized performance
-  pplx-opt --use-search-api --concurrency 10 "AI trends" "ML breakthroughs"
+  pplx --use-search-api --concurrency 10 "AI trends" "ML breakthroughs"
 
   # File analysis (requires Chat API)
-  pplx-opt --file report.pdf "Summarize this document"
+  pplx --file report.pdf "Summarize this document"
 
   # Performance comparison
-  pplx-opt "test query"        # Search API (fast)
-  pplx-opt --model sonar-pro "test query"  # Chat API (slow)
+  pplx "test query"        # Search API (fast)
+  pplx --model sonar-pro "test query"  # Chat API (slow)
 
 Get your API key: https://www.perplexity.ai/account/api/keys
 Set environment variable: export PERPLEXITY_API_KEY="your-key"
@@ -126,7 +126,7 @@ if (cliOptions.help) {
 
 if (cliOptions.version) {
   const packageInfo = await import('../package.json', { assert: { type: 'json' } });
-  console.error(`pplx-opt v${packageInfo.default.version} (Optimized Version)`);
+  console.error(`pplx v${packageInfo.default.version} (Optimized Version)`);
   process.exit(0);
 }
 
