@@ -212,6 +212,126 @@ async function executeBatchSearch(queries: string[], options: {
   }
 }
 
+async function executeChatWithAttachments(
+  query: string,
+  filePaths: string[],
+  options: {
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+  }
+): Promise<{
+  success: boolean;
+  content?: string;
+  citations?: string[];
+  images?: any[];
+  executionTime?: number;
+  error?: string;
+}> {
+  const startTime = performance.now();
+
+  try {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      return {
+        success: false,
+        error: "Perplexity API key not found in environment variables",
+      };
+    }
+
+    const engine = new OptimizedPerplexitySearchEngine(apiKey);
+
+    // Process file attachments
+    const attachments = await engine['processFileAttachments'](filePaths);
+
+    const result = await engine.executeChatWithAttachments(query, attachments, {
+      model: options.model,
+      maxTokens: options.maxTokens,
+      temperature: options.temperature,
+    });
+
+    return {
+      success: true,
+      content: result.content,
+      citations: result.citations,
+      images: result.images,
+      executionTime: result.executionTime,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      executionTime: performance.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function executeAdvancedModel(
+  query: string,
+  options: {
+    model: string;
+    filePaths?: string[];
+    maxTokens?: number;
+    temperature?: number;
+    webhook?: string;
+    async?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  content?: string;
+  requestId?: string;
+  status?: string;
+  citations?: string[];
+  images?: any[];
+  executionTime?: number;
+  isAsync?: boolean;
+  error?: string;
+}> {
+  const startTime = performance.now();
+
+  try {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      return {
+        success: false,
+        error: "Perplexity API key not found in environment variables",
+      };
+    }
+
+    const engine = new OptimizedPerplexitySearchEngine(apiKey);
+
+    let attachments;
+    if (options.filePaths && options.filePaths.length > 0) {
+      attachments = await engine['processFileAttachments'](options.filePaths);
+    }
+
+    const result = await engine.executeAdvancedModel(query, {
+      model: options.model,
+      attachments,
+      maxTokens: options.maxTokens,
+      temperature: options.temperature,
+      webhook: options.webhook,
+    });
+
+    return {
+      success: true,
+      content: result.content,
+      requestId: result.requestId,
+      status: result.status,
+      citations: result.citations,
+      images: result.images,
+      executionTime: result.executionTime,
+      isAsync: result.isAsync,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      executionTime: performance.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function main(): Promise<void> {
   const executionStartTime = Date.now();
 
@@ -309,36 +429,83 @@ async function main(): Promise<void> {
       queryCount: queries.length
     });
 
-    // Force Chat API mode for attachments or specific models
-    const needsChatAPI = !!(cliOptions.file || cliOptions.image ||
-      (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0) > 0 ||
-      selectedModel && ['sonar-reasoning', 'sonar-deep-research'].includes(selectedModel));
+    // Collect all file paths
+    const filePaths: string[] = [];
+    if (cliOptions.file) filePaths.push(cliOptions.file);
+    if (cliOptions.image) filePaths.push(cliOptions.image);
+    if (cliOptions.attach) filePaths.push(...cliOptions.attach);
+    if (cliOptions['attach-image']) filePaths.push(...cliOptions['attach-image']);
 
-    const actualUseSearchAPI = useSearchAPI && !needsChatAPI;
+    // Determine execution mode and routing
+    const hasAttachments = filePaths.length > 0;
+    const isAdvancedModel = selectedModel && ['sonar-reasoning', 'sonar-deep-research'].includes(selectedModel);
+    const needsAdvancedRouting = hasAttachments || isAdvancedModel;
 
     logEvent('info', 'execution_mode_selected', {
-      mode: actualUseSearchAPI ? 'search-api' : 'chat-api',
-      reason: needsChatAPI ? 'attachments or advanced model' : 'performance optimization'
+      mode: needsAdvancedRouting ? 'advanced' : 'search-api',
+      hasAttachments,
+      isAdvancedModel,
+      attachmentCount: filePaths.length,
+      model: selectedModel
     });
 
     let results: any;
 
     if (queries.length === 1) {
-      // Single query
-      results = await executeFastSearch(queries[0], {
-        maxResults,
-        model: selectedModel,
-      });
+      // Single query execution
+      const query = queries[0];
 
-      const output = {
+      if (isAdvancedModel) {
+        // Use advanced model routing
+        results = await executeAdvancedModel(query, {
+          model: selectedModel!,
+          filePaths: hasAttachments ? filePaths : undefined,
+          webhook: cliOptions.webhook,
+          async: cliOptions.async,
+        });
+      } else if (hasAttachments) {
+        // Use chat with attachments
+        results = await executeChatWithAttachments(query, filePaths, {
+          model: selectedModel,
+        });
+      } else {
+        // Use standard search
+        results = await executeFastSearch(query, {
+          maxResults,
+          model: selectedModel,
+        });
+      }
+
+      // Build output based on execution type
+      const output: any = {
         version: '1.0.0',
         ok: results.success,
-        query: queries[0],
-        results: results.results || [],
+        query,
         executionTime: results.executionTime,
-        mode: actualUseSearchAPI ? 'search-api' : 'chat-api',
-        error: results.error,
+        mode: isAdvancedModel ? 'advanced-model' : (hasAttachments ? 'chat-attachments' : 'search-api'),
       };
+
+      if (isAdvancedModel) {
+        if (results.isAsync) {
+          output.requestId = results.requestId;
+          output.status = results.status;
+          output.isAsync = true;
+        } else {
+          output.content = results.content;
+          output.citations = results.citations;
+          output.images = results.images;
+        }
+      } else if (hasAttachments) {
+        output.content = results.content;
+        output.citations = results.citations;
+        output.images = results.images;
+      } else {
+        output.results = results.results || [];
+      }
+
+      if (results.error) {
+        output.error = results.error;
+      }
 
       if (outputFormat === 'jsonl') {
         console.log(JSON.stringify(output));
@@ -348,38 +515,142 @@ async function main(): Promise<void> {
 
     } else {
       // Multiple queries
-      results = await executeBatchSearch(queries, {
-        maxResults,
-        concurrency,
-        model: selectedModel,
-        onProgress: (completed, total) => {
-          logEvent('info', 'progress', { completed, total });
-        }
-      });
+      if (needsAdvancedRouting) {
+        // For multiple queries with attachments or advanced models, process sequentially
+        const multiResults: any[] = [];
+        let totalSuccess = 0;
+        let totalFailed = 0;
 
-      const output = {
-        version: '1.0.0',
-        ok: results.success,
-        summary: {
-          total: queries.length,
-          successful: results.success ? queries.length : 0,
-          failed: results.success ? 0 : queries.length,
-          totalDuration: results.executionTime,
-        },
-        results: results.results || [],
-        mode: actualUseSearchAPI ? 'search-api' : 'chat-api',
-        error: results.error,
-      };
+        for (let i = 0; i < queries.length; i++) {
+          const query = queries[i];
 
-      if (outputFormat === 'jsonl') {
-        for (const result of output.results || []) {
-          console.log(JSON.stringify({
-            ...result,
-            mode: output.mode,
-          }));
+          try {
+            let result: any;
+
+            if (isAdvancedModel) {
+              result = await executeAdvancedModel(query, {
+                model: selectedModel!,
+                filePaths: hasAttachments ? filePaths : undefined,
+                webhook: cliOptions.webhook,
+                async: cliOptions.async,
+              });
+            } else if (hasAttachments) {
+              result = await executeChatWithAttachments(query, filePaths, {
+                model: selectedModel,
+              });
+            } else {
+              result = await executeFastSearch(query, {
+                maxResults,
+                model: selectedModel,
+              });
+            }
+
+            const outputResult: any = {
+              query,
+              ok: result.success,
+              executionTime: result.executionTime,
+              mode: isAdvancedModel ? 'advanced-model' : (hasAttachments ? 'chat-attachments' : 'search-api'),
+            };
+
+            if (isAdvancedModel) {
+              if (result.isAsync) {
+                outputResult.requestId = result.requestId;
+                outputResult.status = result.status;
+                outputResult.isAsync = true;
+              } else {
+                outputResult.content = result.content;
+                outputResult.citations = result.citations;
+                outputResult.images = result.images;
+              }
+            } else if (hasAttachments) {
+              outputResult.content = result.content;
+              outputResult.citations = result.citations;
+              outputResult.images = result.images;
+            } else {
+              outputResult.results = result.results || [];
+            }
+
+            if (result.error) {
+              outputResult.error = result.error;
+              totalFailed++;
+            } else {
+              totalSuccess++;
+            }
+
+            multiResults.push(outputResult);
+
+            logEvent('info', 'progress', { completed: i + 1, total: queries.length });
+
+          } catch (error) {
+            multiResults.push({
+              query,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+              executionTime: 0,
+              mode: 'advanced-model',
+            });
+            totalFailed++;
+          }
         }
+
+        const output = {
+          version: '1.0.0',
+          ok: totalFailed === 0,
+          summary: {
+            total: queries.length,
+            successful: totalSuccess,
+            failed: totalFailed,
+            totalDuration: multiResults.reduce((sum, r) => sum + (r.executionTime || 0), 0),
+          },
+          results: multiResults,
+          mode: needsAdvancedRouting ? 'advanced' : 'search-api',
+        };
+
+        if (outputFormat === 'jsonl') {
+          for (const result of multiResults) {
+            console.log(JSON.stringify(result));
+          }
+        } else {
+          console.log(JSON.stringify(output, null, 2));
+        }
+
+        results = { success: totalFailed === 0 };
+
       } else {
-        console.log(JSON.stringify(output, null, 2));
+        // Standard batch search for multiple queries without attachments
+        results = await executeBatchSearch(queries, {
+          maxResults,
+          concurrency,
+          model: selectedModel,
+          onProgress: (completed, total) => {
+            logEvent('info', 'progress', { completed, total });
+          }
+        });
+
+        const output = {
+          version: '1.0.0',
+          ok: results.success,
+          summary: {
+            total: queries.length,
+            successful: results.success ? queries.length : 0,
+            failed: results.success ? 0 : queries.length,
+            totalDuration: results.executionTime,
+          },
+          results: results.results || [],
+          mode: 'search-api',
+          error: results.error,
+        };
+
+        if (outputFormat === 'jsonl') {
+          for (const result of output.results || []) {
+            console.log(JSON.stringify({
+              ...result,
+              mode: output.mode,
+            }));
+          }
+        } else {
+          console.log(JSON.stringify(output, null, 2));
+        }
       }
     }
 
@@ -388,7 +659,7 @@ async function main(): Promise<void> {
       duration: totalDuration,
       success: results.success,
       queryCount: queries.length,
-      mode: actualUseSearchAPI ? 'search-api' : 'chat-api'
+      mode: needsAdvancedRouting ? 'advanced' : 'search-api'
     });
 
     process.exit(results.success ? 0 : 1);

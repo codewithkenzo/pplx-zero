@@ -2,6 +2,42 @@ import Perplexity from '@perplexity-ai/perplexity_ai';
 import type { SearchConfig, QueryResult, ToolOutput, StreamingEvent } from "./types.js";
 import { PerplexitySearchError, ErrorCode } from "./types.js";
 import type { SearchResult } from "./schema.js";
+import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
+
+/**
+ * File attachment interface for processing different file types
+ */
+interface FileAttachment {
+  path: string;
+  type: 'image' | 'document' | 'data';
+  mimeType: string;
+  content: string | Buffer;
+  filename: string;
+}
+
+/**
+ * Supported file types and their MIME types
+ */
+const SUPPORTED_FILE_TYPES = {
+  // Images
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+
+  // Documents
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.doc': 'application/msword',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+} as const;
 
 /**
  * Optimized Perplexity Search Engine with minimal abstraction and maximum performance
@@ -17,6 +53,227 @@ export class OptimizedPerplexitySearchEngine {
       );
     }
     this.client = new Perplexity({ apiKey });
+  }
+
+  /**
+   * Process file attachments for Chat API
+   */
+  private async processFileAttachments(filePaths: string[]): Promise<FileAttachment[]> {
+    const attachments: FileAttachment[] = [];
+
+    for (const filePath of filePaths) {
+      try {
+        const fileExtension = extname(filePath).toLowerCase();
+        const mimeType = SUPPORTED_FILE_TYPES[fileExtension as keyof typeof SUPPORTED_FILE_TYPES];
+
+        if (!mimeType) {
+          throw new Error(`Unsupported file type: ${fileExtension}. Supported types: ${Object.keys(SUPPORTED_FILE_TYPES).join(', ')}`);
+        }
+
+        const content = await readFile(filePath);
+        const filename = filePath.split('/').pop() || filePath;
+
+        // Determine file type category
+        let type: 'image' | 'document' | 'data';
+        if (mimeType.startsWith('image/')) {
+          type = 'image';
+        } else if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text') || mimeType.includes('markdown')) {
+          type = 'document';
+        } else {
+          type = 'data';
+        }
+
+        attachments.push({
+          path: filePath,
+          type,
+          mimeType,
+          content,
+          filename,
+        });
+      } catch (error) {
+        throw new Error(`Failed to process file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return attachments;
+  }
+
+  /**
+   * Execute Chat API with file attachments
+   */
+  async executeChatWithAttachments(
+    query: string,
+    attachments: FileAttachment[],
+    options: {
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+    } = {}
+  ): Promise<{
+    content: string;
+    citations?: string[];
+    images?: any[];
+    executionTime: number;
+  }> {
+    const startTime = performance.now();
+
+    try {
+      // Create user message with attachments
+      const userMessage: any = {
+        role: "user",
+        content: [
+          { type: "text", text: query }
+        ]
+      };
+
+      // Add attachments to the message
+      for (const attachment of attachments) {
+        if (attachment.type === 'image') {
+          userMessage.content.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${attachment.mimeType};base64,${attachment.content.toString('base64')}`
+            }
+          });
+        } else {
+          // For documents, add as text content
+          const textContent = attachment.content instanceof Buffer
+            ? attachment.content.toString('utf-8')
+            : attachment.content;
+
+          userMessage.content.push({
+            type: "text",
+            text: `\n\n[Document: ${attachment.filename}]\n${textContent}`
+          });
+        }
+      }
+
+      const messages = [
+        {
+          role: "system",
+          content: "You are a helpful AI assistant. Analyze the provided files and query accurately. Provide citations when possible."
+        },
+        userMessage
+      ];
+
+      const chatParams: any = {
+        model: options.model || "sonar-pro",
+        messages,
+        max_tokens: options.maxTokens || 4000,
+        temperature: options.temperature || 0.1,
+      };
+
+      const response = await this.client.chat.completions.create(chatParams);
+
+      return {
+        content: response.choices[0]?.message?.content || '',
+        citations: response.citations,
+        images: response.images,
+        executionTime: performance.now() - startTime,
+      };
+    } catch (error) {
+      throw new Error(`Chat completion with attachments failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Execute advanced model (reasoning/deep-research) with proper routing
+   */
+  async executeAdvancedModel(
+    query: string,
+    options: {
+      model: string;
+      maxTokens?: number;
+      temperature?: number;
+      attachments?: FileAttachment[];
+      webhook?: string;
+    } = {}
+  ): Promise<{
+    content?: string;
+    requestId?: string;
+    status?: string;
+    citations?: string[];
+    images?: any[];
+    executionTime: number;
+    isAsync: boolean;
+  }> {
+    const startTime = performance.now();
+
+    try {
+      const { model, attachments, webhook } = options;
+
+      // Deep research and reasoning models use chat completions
+      if (model === 'sonar-deep-research' || model === 'sonar-reasoning') {
+        let messages: any[] = [];
+
+        if (attachments && attachments.length > 0) {
+          // Process with attachments
+          const userMessage: any = {
+            role: "user",
+            content: [
+              { type: "text", text: query }
+            ]
+          };
+
+          for (const attachment of attachments) {
+            if (attachment.type === 'image') {
+              userMessage.content.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${attachment.mimeType};base64,${attachment.content.toString('base64')}`
+                }
+              });
+            } else {
+              const textContent = attachment.content instanceof Buffer
+                ? attachment.content.toString('utf-8')
+                : attachment.content;
+
+              userMessage.content.push({
+                type: "text",
+                text: `\n\n[Document: ${attachment.filename}]\n${textContent}`
+              });
+            }
+          }
+
+          messages = [
+            {
+              role: "system",
+              content: model === 'sonar-deep-research'
+                ? "You are a helpful AI assistant. Conduct thorough research and analysis. Provide detailed, well-cited responses."
+                : "You are a helpful AI assistant. Use step-by-step reasoning to provide accurate, well-reasoned responses."
+            },
+            userMessage
+          ];
+        } else {
+          messages = [
+            {
+              role: "system",
+              content: model === 'sonar-deep-research'
+                ? "You are a helpful AI assistant. Conduct thorough research and analysis. Provide detailed, well-cited responses."
+                : "You are a helpful AI assistant. Use step-by-step reasoning to provide accurate, well-reasoned responses."
+            },
+            { role: "user", content: query }
+          ];
+        }
+
+        const response = await this.client.chat.completions.create({
+          model,
+          messages,
+          max_tokens: options.maxTokens || 4000,
+          temperature: options.temperature || 0.1,
+        });
+
+        return {
+          content: response.choices[0]?.message?.content || '',
+          citations: response.citations,
+          images: response.images,
+          executionTime: performance.now() - startTime,
+          isAsync: false,
+        };
+      }
+    } catch (error) {
+      throw new Error(`Advanced model execution failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
