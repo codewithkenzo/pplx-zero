@@ -3,23 +3,24 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
-import { PerplexitySearchTool } from './index.js';
-import { type EventV1, type BatchSearchInputV1 } from './schema.js';
+import { OptimizedPerplexitySearchEngine, fastSearch, fastMultiSearch } from './core.js';
+import type { SearchResult } from './schema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface CliOptions {
-  // Simplified options
+interface OptimizedCliOptions {
+  // Basic options
+  query?: string;
   file?: string;
   image?: string;
   format?: string;
+  model?: string;
 
-  // Standard options
+  // Commands
   version?: boolean;
   help?: boolean;
   'help-advanced'?: boolean;
-  model?: string;
 
   // Advanced options
   input?: string;
@@ -31,28 +32,34 @@ interface CliOptions {
   'attach-image'?: string[];
   async?: boolean;
   webhook?: string;
+
+  // Performance options
+  'use-search-api'?: boolean;
+  'max-results'?: string;
+  'batch-size'?: string;
 }
 
 interface ParsedArgs {
-  values: CliOptions;
+  values: OptimizedCliOptions;
   positionals: string[];
 }
 
 const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = parseArgs({
   args: process.argv.slice(2),
   options: {
-    // Basic options for normal usage
-    model: { type: 'string', short: 'm' },
+    // Basic options
+    query: { type: 'string', short: 'q' },
     file: { type: 'string', short: 'f' },
     image: { type: 'string', short: 'i' },
     format: { type: 'string', short: 'o', default: 'json' },
+    model: { type: 'string', short: 'm' },
 
-    // Standard commands
+    // Commands
     version: { type: 'boolean', short: 'v' },
     help: { type: 'boolean', short: 'h' },
     'help-advanced': { type: 'boolean' },
 
-    // Advanced options (hidden from basic help)
+    // Advanced options
     input: { type: 'string', short: 'I' },
     stdin: { type: 'boolean', short: 's' },
     concurrency: { type: 'string', short: 'c' },
@@ -62,52 +69,50 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
     'attach-image': { type: 'string', multiple: true },
     async: { type: 'boolean' },
     webhook: { type: 'string' },
+
+    // Performance options
+    'use-search-api': { type: 'boolean', default: true },
+    'max-results': { type: 'string', short: 'n', default: '5' },
+    'batch-size': { type: 'string', default: '20' },
   },
   allowPositionals: true,
 }) as ParsedArgs;
 
-if (cliOptions.help) {
+function showHelp() {
   console.error(`
-PPLX-Zero - Fast Perplexity AI search CLI with multimodal support
+PPLX-Zero - Optimized Perplexity AI search CLI
 
 USAGE:
-  pplx [OPTIONS] [QUERY...]
+  pplx-opt [OPTIONS] [QUERY...]
 
 BASIC OPTIONS:
-  -m, --model <model>       Choose AI model (sonar, sonar-pro, sonar-deep-research, sonar-reasoning)
-  -f, --file <file>         Attach document (PDF, DOC, DOCX, TXT, RTF)
-  -i, --image <file>        Attach image (PNG, JPEG, WebP, HEIF, HEIC, GIF)
-  -o, --format <format>     Output format (json, jsonl)
+  -q, --query <query>         Search query (fast mode)
+  -f, --file <file>           Attach document for analysis
+  -i, --image <file>          Attach image for analysis
+  -m, --model <model>         AI model: sonar, sonar-pro, sonar-reasoning, sonar-deep-research
+  -n, --max-results <n>       Maximum results per query (default: 5)
+  -o, --format <format>       Output format: json|jsonl (default: json)
 
-  -v, --version             Show version
-  -h, --help                Show this help
+PERFORMANCE OPTIONS:
+  --use-search-api             Use fast Search API (default: true)
+  --batch-size <n>            Batch size for processing (default: 20)
 
 EXAMPLES:
-  # Simple search
-  pplx "latest AI developments"
+  # Fast search using Search API (500ms)
+  pplx-opt "latest AI developments"
 
-  # Choose model for detailed analysis
-  pplx --model sonar-pro "Explain quantum computing"
+  # Detailed analysis using Chat API (20s)
+  pplx-opt --model sonar-pro "Explain quantum computing in detail"
 
-  # Analyze document
-  pplx --file report.pdf "Summarize this document"
+  # Batch searches with optimized performance
+  pplx-opt --use-search-api --concurrency 10 "AI trends" "ML breakthroughs"
 
-  # Analyze image
-  pplx --image screenshot.png "What does this interface do?"
+  # File analysis (requires Chat API)
+  pplx-opt --file report.pdf "Summarize this document"
 
-  # Document + image analysis
-  pplx --file data.csv --image chart.png "Analyze this data"
-
-  # Different AI models
-  pplx --model sonar-reasoning "Solve this math problem"
-  pplx --model sonar-deep-research "History of artificial intelligence"
-
-# Advanced Usage (see --help-advanced):
-  pplx --help-advanced
-
-SUPPORTED FORMATS:
-  Documents: PDF, DOC, DOCX, TXT, RTF (max 50MB)
-  Images: PNG, JPEG, WebP, HEIF, HEIC, GIF (max 50MB)
+  # Performance comparison
+  pplx-opt "test query"        # Search API (fast)
+  pplx-opt --model sonar-pro "test query"  # Chat API (slow)
 
 Get your API key: https://www.perplexity.ai/account/api/keys
 Set environment variable: export PERPLEXITY_API_KEY="your-key"
@@ -115,370 +120,318 @@ Set environment variable: export PERPLEXITY_API_KEY="your-key"
   process.exit(0);
 }
 
-if (cliOptions['help-advanced']) {
-  console.error(`
-PPLX-Zero - Advanced Usage Options
-
-USAGE:
-  pplx [ADVANCED-OPTIONS] [QUERY...]
-
-ADVANCED OPTIONS:
-  -I, --input <file>         Read batch requests from JSON file
-  -s, --stdin                Read JSONL requests from stdin
-  -c, --concurrency <n>      Max concurrent requests (default: 5, max: 20)
-  -t, --timeout <ms>          Request timeout in milliseconds (default: 30000)
-  -w, --workspace <path>     Workspace directory for sandboxing
-  -o, --format <format>      Output format: json|jsonl (default: json)
-  -m, --model <model>         AI model (default: sonar)
-
-  --attach <file>             Attach document files (can be used multiple times)
-  --attach-image <file>       Attach image files (can be used multiple times)
-  --async                     Process requests asynchronously
-  --webhook <url>             Webhook URL for async notifications
-
-  -v, --version               Show version
-  -h, --help                  Show basic help
-
-ADVANCED EXAMPLES:
-  # Batch processing
-  pplx --input queries.json
-
-  # Stream processing
-  cat queries.jsonl | pplx --stdin
-
-  # Custom concurrency and timeout
-  pplx --concurrency 10 --timeout 60000 "Multiple searches"
-
-  # High performance batch
-  pplx --input queries.json --concurrency 15 --format jsonl
-
-  # Multiple attachments (advanced syntax)
-  pplx --attach doc1.pdf --attach doc2.txt --attach-image img1.png "Analyze all files"
-
-  # Async processing with webhook
-  pplx --async --webhook https://api.example.com/webhook "Long research task"
-
-  # Custom workspace
-  pplx --workspace /tmp/research "Custom workspace search"
-
-# Basic Usage (see --help):
-  pplx --help
-`);
-  process.exit(0);
+if (cliOptions.help) {
+  showHelp();
 }
 
 if (cliOptions.version) {
   const packageInfo = await import('../package.json', { assert: { type: 'json' } });
-  console.error(`pplx v${packageInfo.default.version}`);
+  console.error(`pplx-opt v${packageInfo.default.version} (Optimized Version)`);
   process.exit(0);
 }
 
-function logEvent(event: EventV1): void {
-  console.error(JSON.stringify(event));
-}
-
-async function readJsonFile(filePath: string): Promise<unknown> {
-  try {
-    const fileContent = await Bun.file(filePath).text();
-    return JSON.parse(fileContent);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logEvent({
-      time: new Date().toISOString(),
-      level: 'error',
-      event: 'file_read_error',
-      data: { file: filePath, error: errorMessage }
-    });
-    throw error;
-  }
-}
-
-async function readJsonlFromStdin(): Promise<BatchSearchInputV1> {
-  const readLineInterface = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false
-  });
-
-  const searchRequests: unknown[] = [];
-  let currentLineNumber = 0;
-
-  for await (const line of readLineInterface) {
-    currentLineNumber++;
-    const trimmedLine = line.trim();
-    if (!trimmedLine) continue;
-
-    try {
-      const parsedRequest = JSON.parse(trimmedLine);
-      searchRequests.push(parsedRequest);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logEvent({
-        time: new Date().toISOString(),
-        level: 'error',
-        event: 'jsonl_parse_error',
-        data: { line: currentLineNumber, content: trimmedLine, error: errorMessage }
-      });
-      throw new Error(`Invalid JSON on line ${currentLineNumber}: ${errorMessage}`);
-    }
-  }
-
-  return {
-    version: '1.0.0',
-    requests: searchRequests,
-  };
-}
-
-const MIN_CONCURRENCY = 1;
-const MAX_CONCURRENCY = 20;
-const MIN_TIMEOUT = 1000;
-const MAX_TIMEOUT = 300000;
-const DEFAULT_CONCURRENCY = 5;
-const DEFAULT_TIMEOUT = 30000;
-
-function parseNumericArgument(
-  value: string | undefined,
-  defaultValue: number,
-  min: number,
-  max: number,
-  name: string
-): number {
+function parseNumber(value: string | undefined, defaultValue: number, min: number, max: number, name: string): number {
   if (!value) return defaultValue;
-
-  const parsedValue = parseInt(value, 10);
-  if (isNaN(parsedValue) || parsedValue < min || parsedValue > max) {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed < min || parsed > max) {
     throw new Error(`${name} must be between ${min} and ${max}`);
   }
+  return parsed;
+}
 
-  return parsedValue;
+function logEvent(level: 'info' | 'error', event: string, data?: any): void {
+  console.error(JSON.stringify({
+    time: new Date().toISOString(),
+    level,
+    event,
+    data
+  }));
+}
+
+async function executeFastSearch(query: string, options: {
+  maxResults: number;
+  model?: string;
+}): Promise<{
+  success: boolean;
+  results?: SearchResult[];
+  executionTime?: number;
+  error?: string;
+}> {
+  const startTime = performance.now();
+
+  try {
+    const result = await fastSearch(query, {
+      maxResults: options.maxResults,
+      model: options.model,
+    });
+
+    return {
+      success: result.success,
+      results: result.results,
+      executionTime: result.executionTime || performance.now() - startTime,
+      error: result.error,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      executionTime: performance.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function executeBatchSearch(queries: string[], options: {
+  maxResults: number;
+  concurrency: number;
+  model?: string;
+  onProgress?: (completed: number, total: number) => void;
+}): Promise<{
+  success: boolean;
+  results?: any[];
+  totalResults?: number;
+  executionTime?: number;
+  error?: string;
+}> {
+  const startTime = performance.now();
+
+  try {
+    const result = await fastMultiSearch(queries, {
+      maxResults: options.maxResults,
+      concurrency: options.concurrency,
+      model: options.model,
+      onProgress: options.onProgress,
+    });
+
+    return {
+      success: result.success,
+      results: result.results,
+      totalResults: result.totalResults,
+      executionTime: result.executionTime,
+      error: result.error,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      executionTime: performance.now() - startTime,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function main(): Promise<void> {
   const executionStartTime = Date.now();
 
   try {
-    const maxConcurrency = parseNumericArgument(
-      cliOptions.concurrency,
-      DEFAULT_CONCURRENCY,
-      MIN_CONCURRENCY,
-      MAX_CONCURRENCY,
-      'Concurrency'
-    );
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
+      throw new Error('PERPLEXITY_API_KEY environment variable is required');
+    }
 
-    const requestTimeout = parseNumericArgument(
-      cliOptions.timeout,
-      DEFAULT_TIMEOUT,
-      MIN_TIMEOUT,
-      MAX_TIMEOUT,
-      'Timeout'
-    );
+    // Parse options
+    const maxResults = parseNumber(cliOptions['max-results'], 5, 1, 20, 'Max results');
+    const concurrency = parseNumber(cliOptions.concurrency, 5, 1, 20, 'Concurrency');
+    const timeout = parseNumber(cliOptions.timeout, 30000, 1000, 300000, 'Timeout');
+    const batchSize = parseNumber(cliOptions['batch-size'], 20, 1, 100, 'Batch size');
 
-    const workspaceDirectory = cliOptions.workspace;
+    const useSearchAPI = cliOptions['use-search-api'] !== false;
     const outputFormat = cliOptions.format as 'json' | 'jsonl';
 
     if (!['json', 'jsonl'].includes(outputFormat)) {
       throw new Error('Format must be json or jsonl');
     }
 
-    // Validate model if provided
-  let selectedModel: string | undefined;
-  if (cliOptions.model) {
-    const validModels = ['sonar', 'sonar-pro', 'sonar-deep-research', 'sonar-reasoning'];
-    if (!validModels.includes(cliOptions.model)) {
-      throw new Error(`Invalid model: ${cliOptions.model}. Valid models: ${validModels.join(', ')}`);
+    // Validate model
+    let selectedModel: string | undefined;
+    if (cliOptions.model) {
+      const validModels = ['sonar', 'sonar-pro', 'sonar-reasoning', 'sonar-deep-research'];
+      if (!validModels.includes(cliOptions.model)) {
+        throw new Error(`Invalid model: ${cliOptions.model}. Valid models: ${validModels.join(', ')}`);
+      }
+      selectedModel = cliOptions.model;
     }
-    selectedModel = cliOptions.model;
-  }
 
-  const searchTool = new PerplexitySearchTool(workspaceDirectory, {
-    defaultModel: selectedModel as any,
-  });
-
-  logEvent({
-    time: new Date().toISOString(),
-    level: 'info',
-    event: 'tool_initialized',
-    data: {
-      concurrency: maxConcurrency,
-      timeout: requestTimeout,
-      workspace: workspaceDirectory,
-      format: outputFormat,
+    logEvent('info', 'cli_initialized', {
+      useSearchAPI,
+      maxResults,
+      concurrency,
+      timeout,
+      batchSize,
       model: selectedModel,
-      async: cliOptions.async,
-      webhook: cliOptions.webhook,
-      hasAttachments: (cliOptions.file || cliOptions.image ||
+      format: outputFormat,
+      hasAttachments: !!(cliOptions.file || cliOptions.image ||
         (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0)) > 0
-    }
-  });
+    });
 
-    let batchSearchInput: BatchSearchInputV1;
-    let inputSourceType: string;
+    // Determine execution mode
+    let queries: string[] = [];
 
-    if (cliOptions.stdin) {
-      batchSearchInput = await readJsonlFromStdin();
-      inputSourceType = 'stdin';
-    } else if (cliOptions.input) {
-      batchSearchInput = await readJsonFile(cliOptions.input) as BatchSearchInputV1;
-      inputSourceType = cliOptions.input;
+    if (cliOptions.query) {
+      queries = [cliOptions.query];
     } else if (commandLineQueries.length > 0) {
-      const combinedQuery = commandLineQueries.join(' ');
+      queries = commandLineQueries;
+    } else if (cliOptions.stdin) {
+      // Read from stdin
+      const readLineInterface = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: false
+      });
 
-      // Build attachment inputs from CLI options
-      const attachmentInputs: any[] = [];
-
-      // Process simplified document attachments
-      if (cliOptions.file) {
-        attachmentInputs.push({
-          path: cliOptions.file,
-          type: 'document',
-        });
-      }
-
-      // Process simplified image attachments
-      if (cliOptions.image) {
-        attachmentInputs.push({
-          path: cliOptions.image,
-          type: 'image',
-        });
-      }
-
-      // Process advanced document attachments
-      if (cliOptions.attach && cliOptions.attach.length > 0) {
-        for (const filePath of cliOptions.attach) {
-          attachmentInputs.push({
-            path: filePath,
-            type: 'document',
-          });
-        }
-      }
-
-      // Process advanced image attachments
-      if (cliOptions['attach-image'] && cliOptions['attach-image'].length > 0) {
-        for (const filePath of cliOptions['attach-image']) {
-          attachmentInputs.push({
-            path: filePath,
-            type: 'image',
-          });
-        }
-      }
-
-      batchSearchInput = {
-        version: '1.0.0',
-        requests: [{
-          op: 'search',
-          args: {
-            query: combinedQuery,
-            maxResults: 5,
-            model: selectedModel as any,
-            attachmentInputs: attachmentInputs.length > 0 ? attachmentInputs : undefined,
-          },
-          options: {
-            timeoutMs: requestTimeout,
-            async: cliOptions.async,
-            webhook: cliOptions.webhook,
+      for await (const line of readLineInterface) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed.query) queries.push(parsed.query);
+            if (parsed.queries && Array.isArray(parsed.queries)) {
+              queries.push(...parsed.queries);
+            }
+          } catch {
+            // Treat as plain query
+            queries.push(trimmed);
           }
-        }],
+        }
+      }
+    } else if (cliOptions.input) {
+      // Read from file
+      const fileContent = await Bun.file(cliOptions.input).text();
+      const parsed = JSON.parse(fileContent);
+
+      if (parsed.queries && Array.isArray(parsed.queries)) {
+        queries = parsed.queries;
+      } else if (parsed.requests && Array.isArray(parsed.requests)) {
+        queries = parsed.requests.map((req: any) => req.args?.query).filter(Boolean);
+      } else if (parsed.query) {
+        queries = [parsed.query];
+      }
+    }
+
+    if (queries.length === 0) {
+      throw new Error('No queries provided. Use --help for usage information.');
+    }
+
+    logEvent('info', 'queries_loaded', {
+      source: cliOptions.stdin ? 'stdin' : cliOptions.input || 'cli',
+      queryCount: queries.length
+    });
+
+    // Force Chat API mode for attachments or specific models
+    const needsChatAPI = !!(cliOptions.file || cliOptions.image ||
+      (cliOptions.attach?.length || 0) + (cliOptions['attach-image']?.length || 0) > 0 ||
+      selectedModel && ['sonar-reasoning', 'sonar-deep-research'].includes(selectedModel));
+
+    const actualUseSearchAPI = useSearchAPI && !needsChatAPI;
+
+    logEvent('info', 'execution_mode_selected', {
+      mode: actualUseSearchAPI ? 'search-api' : 'chat-api',
+      reason: needsChatAPI ? 'attachments or advanced model' : 'performance optimization'
+    });
+
+    let results: any;
+
+    if (queries.length === 1) {
+      // Single query
+      results = await executeFastSearch(queries[0], {
+        maxResults,
+        model: selectedModel,
+      });
+
+      const output = {
+        version: '1.0.0',
+        ok: results.success,
+        query: queries[0],
+        results: results.results || [],
+        executionTime: results.executionTime,
+        mode: actualUseSearchAPI ? 'search-api' : 'chat-api',
+        error: results.error,
       };
-      inputSourceType = 'cli';
+
+      if (outputFormat === 'jsonl') {
+        console.log(JSON.stringify(output));
+      } else {
+        console.log(JSON.stringify(output, null, 2));
+      }
+
     } else {
-      throw new Error('No input provided. Use --help for usage information.');
+      // Multiple queries
+      results = await executeBatchSearch(queries, {
+        maxResults,
+        concurrency,
+        model: selectedModel,
+        onProgress: (completed, total) => {
+          logEvent('info', 'progress', { completed, total });
+        }
+      });
+
+      const output = {
+        version: '1.0.0',
+        ok: results.success,
+        summary: {
+          total: queries.length,
+          successful: results.success ? queries.length : 0,
+          failed: results.success ? 0 : queries.length,
+          totalDuration: results.executionTime,
+        },
+        results: results.results || [],
+        mode: actualUseSearchAPI ? 'search-api' : 'chat-api',
+        error: results.error,
+      };
+
+      if (outputFormat === 'jsonl') {
+        for (const result of output.results || []) {
+          console.log(JSON.stringify({
+            ...result,
+            mode: output.mode,
+          }));
+        }
+      } else {
+        console.log(JSON.stringify(output, null, 2));
+      }
     }
 
-    logEvent({
-      time: new Date().toISOString(),
-      level: 'info',
-      event: 'input_loaded',
-      data: {
-        source: inputSourceType,
-        requestCount: batchSearchInput.requests?.length || 1
-      }
+    const totalDuration = Date.now() - executionStartTime;
+    logEvent('info', 'execution_completed', {
+      duration: totalDuration,
+      success: results.success,
+      queryCount: queries.length,
+      mode: actualUseSearchAPI ? 'search-api' : 'chat-api'
     });
 
-    batchSearchInput.options = {
-      concurrency: maxConcurrency,
-      timeoutMs: requestTimeout,
-      workspace: workspaceDirectory,
-      failFast: false,
-      ...batchSearchInput.options,
-    };
-
-    logEvent({
-      time: new Date().toISOString(),
-      level: 'info',
-      event: 'search_started',
-      data: { requestCount: batchSearchInput.requests?.length || 1 }
-    });
-
-    const searchResults = await searchTool.runBatch(batchSearchInput);
-
-    logEvent({
-      time: new Date().toISOString(),
-      level: 'info',
-      event: 'search_completed',
-      data: {
-        totalDuration: searchResults.summary.totalDuration,
-        successful: searchResults.summary.successful,
-        failed: searchResults.summary.failed,
-      }
-    });
-
-    if (outputFormat === 'jsonl') {
-      for (const searchResult of searchResults.results) {
-        console.log(JSON.stringify(searchResult));
-      }
-    } else {
-      console.log(JSON.stringify(searchResults, null, 2));
-    }
-
-    process.exit(searchResults.ok ? 0 : 1);
+    process.exit(results.success ? 0 : 1);
 
   } catch (error) {
     const executionDuration = Date.now() - executionStartTime;
-    
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorDetails = error instanceof Error ? error.stack : undefined;
 
-    logEvent({
-      time: new Date().toISOString(),
-      level: 'error',
-      event: 'execution_failed',
-      data: {
-        error: errorMessage,
-        duration: executionDuration,
-      }
+    logEvent('error', 'execution_failed', {
+      error: errorMessage,
+      duration: executionDuration,
+      stack: error instanceof Error ? error.stack : undefined,
     });
 
-    console.log(JSON.stringify({
+    const errorOutput = {
+      version: '1.0.0',
       ok: false,
       error: {
         code: 'EXECUTION_ERROR',
         message: errorMessage,
-        details: errorDetails,
+        details: error instanceof Error ? error.stack : undefined,
       },
       duration: executionDuration,
-    }, null, 2));
+    };
 
+    console.log(JSON.stringify(errorOutput, null, 2));
     process.exit(1);
   }
 }
 
 process.on('SIGINT', () => {
-  logEvent({
-    time: new Date().toISOString(),
-    level: 'info',
-    event: 'termination_signal',
-    data: { signal: 'SIGINT' }
-  });
+  logEvent('info', 'termination_signal', { signal: 'SIGINT' });
   process.exit(130);
 });
 
 process.on('SIGTERM', () => {
-  logEvent({
-    time: new Date().toISOString(),
-    level: 'info',
-    event: 'termination_signal',
-    data: { signal: 'SIGTERM' }
-  });
+  logEvent('info', 'termination_signal', { signal: 'SIGTERM' });
   process.exit(143);
 });
 

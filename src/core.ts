@@ -1,10 +1,12 @@
 import Perplexity from '@perplexity-ai/perplexity_ai';
 import type { SearchConfig, QueryResult, ToolOutput, StreamingEvent } from "./types.js";
 import { PerplexitySearchError, ErrorCode } from "./types.js";
-import { PerplexitySearchTool } from "./index.js";
 import type { SearchResult } from "./schema.js";
 
-export class PerplexitySearchEngine {
+/**
+ * Optimized Perplexity Search Engine with minimal abstraction and maximum performance
+ */
+export class OptimizedPerplexitySearchEngine {
   private readonly client: Perplexity;
 
   constructor(private readonly apiKey: string) {
@@ -17,334 +19,451 @@ export class PerplexitySearchEngine {
     this.client = new Perplexity({ apiKey });
   }
 
-  private createStreamingEvent(eventType: StreamingEvent["type"], eventData: unknown): StreamingEvent {
-    return {
-      type: eventType,
-      timestamp: new Date().toISOString(),
-      data: eventData,
-    };
-  }
-
-  private streamEvent(event: StreamingEvent): void {
-    console.error(JSON.stringify(event));
-  }
-
-  private async executeSingleQuery(
-    searchQuery: string,
-    searchConfig: SearchConfig,
-    abortSignal: AbortSignal
+  /**
+   * Fast single query execution with minimal overhead
+   */
+  async executeSingle(
+    query: string,
+    options: {
+      maxResults?: number;
+      model?: string;
+      timeout?: number;
+    } = {}
   ): Promise<QueryResult> {
+    const startTime = performance.now();
+
     try {
-      const searchParameters: any = {
-        query: searchQuery,
-        max_results: searchConfig.maxResults || 5,
-      };
+      const searchResponse = await this.client.search.create({
+        query,
+        max_results: options.maxResults || 5,
+        model: options.model,
+      });
 
-      const searchResponse = await this.executeWithTimeout(
-        () => this.client.search.create(searchParameters),
-        searchConfig.timeout || 30000,
-        abortSignal
-      );
-
-      const transformedResults = this.transformSearchResponse(searchResponse, searchConfig.maxResults || 5);
+      const results = this.transformResponse(searchResponse, options.maxResults || 5);
 
       return {
-        query: searchQuery,
-        results: transformedResults,
+        query,
+        results,
+        executionTime: performance.now() - startTime,
       };
     } catch (error) {
-      if (error instanceof PerplexitySearchError) {
-        throw error;
-      }
-
-      const searchError = this.categorizeSearchError(error);
-      throw searchError;
+      return {
+        query,
+        results: [],
+        executionTime: performance.now() - startTime,
+        error: this.formatError(error),
+      };
     }
   }
 
-  private async executeWithTimeout<T>(
-    operation: () => Promise<T>,
-    timeoutMs: number,
-    abortSignal: AbortSignal
-  ): Promise<T> {
-    return Promise.race([
-      operation(),
-      new Promise<never>((_, reject) => {
-        if (abortSignal.aborted) {
-          reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
-          return;
-        }
+  /**
+   * Optimized multi-query execution using native SDK array support
+   */
+  async executeMulti(
+    queries: string[],
+    options: {
+      maxResults?: number;
+      model?: string;
+      concurrency?: number;
+      timeout?: number;
+    } = {}
+  ): Promise<QueryResult[]> {
+    const startTime = performance.now();
 
-        const timeoutId = setTimeout(() => {
-          reject(new PerplexitySearchError(
-            `Request timeout after ${timeoutMs}ms`,
-            ErrorCode.UNEXPECTED_ERROR
-          ));
-        }, timeoutMs);
-
-        abortSignal.addEventListener("abort", () => {
-          clearTimeout(timeoutId);
-          reject(new PerplexitySearchError("Request aborted", ErrorCode.UNEXPECTED_ERROR));
+    // Use SDK's native multi-query support for optimal performance
+    if (queries.length <= 10) {
+      try {
+        const searchResponse = await this.client.search.create({
+          query: queries,
+          max_results: options.maxResults || 5,
+          model: options.model,
         });
-      }),
-    ]);
+
+        return queries.map((query, index) => ({
+          query,
+          results: this.extractQueryResults(searchResponse, index, options.maxResults || 5),
+          executionTime: (performance.now() - startTime) / queries.length,
+        }));
+      } catch (error) {
+        // Fall back to concurrent execution if array query fails
+        return this.executeConcurrent(queries, options);
+      }
+    }
+
+    // For larger batches, use optimized concurrent execution
+    return this.executeConcurrent(queries, options);
   }
 
-  private transformSearchResponse(searchResponse: any, maxResults: number): SearchResult[] {
-    let results: SearchResult[] = [];
+  /**
+   * Fast chat completion for when AI generation is needed
+   */
+  async executeChatCompletion(
+    query: string,
+    options: {
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+      searchRecencyFilter?: string;
+      searchDomainFilter?: string[];
+      returnImages?: boolean;
+      returnRelatedQuestions?: boolean;
+      messages?: any[];
+    } = {}
+  ): Promise<{
+    content: string;
+    citations?: string[];
+    images?: any[];
+    relatedQuestions?: string[];
+    executionTime: number;
+  }> {
+    const startTime = performance.now();
 
-    if (searchResponse.results && Array.isArray(searchResponse.results)) {
-      results = searchResponse.results.map((result: any) => ({
+    try {
+      const messages = options.messages || [
+        { role: "system", content: "You are a helpful AI assistant. Provide accurate, concise responses with citations when possible." },
+        { role: "user", content: query }
+      ];
+
+      const chatParams: any = {
+        model: options.model || "sonar",
+        messages,
+        max_tokens: options.maxTokens || 4000,
+        temperature: options.temperature || 0.1,
+      };
+
+      // Add search options if provided
+      if (options.searchRecencyFilter || options.searchDomainFilter || options.returnImages || options.returnRelatedQuestions) {
+        chatParams.search_recency_filter = options.searchRecencyFilter;
+        chatParams.search_domain_filter = options.searchDomainFilter;
+        chatParams.return_images = options.returnImages || false;
+        chatParams.return_related_questions = options.returnRelatedQuestions || false;
+      }
+
+      const response = await this.client.chat.completions.create(chatParams);
+
+      return {
+        content: response.choices[0]?.message?.content || '',
+        citations: response.citations,
+        images: response.images,
+        relatedQuestions: response.related_questions,
+        executionTime: performance.now() - startTime,
+      };
+    } catch (error) {
+      throw new Error(`Chat completion failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Streaming chat completion
+   */
+  async *executeStreamingChatCompletion(
+    query: string,
+    options: {
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+      messages?: any[];
+    } = {}
+  ): AsyncGenerator<string, void, unknown> {
+    try {
+      const messages = options.messages || [
+        { role: "system", content: "You are a helpful AI assistant." },
+        { role: "user", content: query }
+      ];
+
+      const stream = await this.client.chat.completions.create({
+        model: options.model || "sonar",
+        messages,
+        max_tokens: options.maxTokens || 4000,
+        temperature: options.temperature || 0.1,
+        stream: true,
+      });
+
+      for await (const chunk of stream) {
+        if (chunk.choices[0]?.delta?.content) {
+          yield chunk.choices[0].delta.content;
+        }
+      }
+    } catch (error) {
+      throw new Error(`Streaming chat completion failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Async chat completion for long-running tasks
+   */
+  async executeAsyncChatCompletion(
+    query: string,
+    options: {
+      model?: string;
+      maxTokens?: number;
+      webhook?: string;
+      messages?: any[];
+    } = {}
+  ): Promise<{
+    requestId: string;
+    status: string;
+  }> {
+    try {
+      const messages = options.messages || [
+        { role: "user", content: query }
+      ];
+
+      // Note: Async completions are only available for sonar-deep-research model
+      const asyncRequest = await this.client.async.chat.completions.create({
+        messages,
+        model: options.model || "sonar-deep-research",
+        max_tokens: options.maxTokens || 2000,
+      });
+
+      return {
+        requestId: asyncRequest.request_id,
+        status: asyncRequest.status,
+      };
+    } catch (error) {
+      throw new Error(`Async chat completion failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Optimized concurrent execution with proper parallelization
+   */
+  private async executeConcurrent(
+    queries: string[],
+    options: {
+      maxResults?: number;
+      model?: string;
+      concurrency?: number;
+      timeout?: number;
+    } = {}
+  ): Promise<QueryResult[]> {
+    const concurrency = Math.min(options.concurrency || 5, queries.length);
+    const results: QueryResult[] = [];
+
+    // Process queries in optimized batches
+    for (let i = 0; i < queries.length; i += concurrency) {
+      const batch = queries.slice(i, i + concurrency);
+
+      const batchPromises = batch.map(query =>
+        this.executeSingle(query, {
+          maxResults: options.maxResults,
+          model: options.model,
+          timeout: options.timeout,
+        })
+      );
+
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      results.push(...batchResults.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          return {
+            query: batch[index],
+            results: [],
+            executionTime: 0,
+            error: this.formatError(result.reason),
+          };
+        }
+      }));
+    }
+
+    return results;
+  }
+
+  /**
+   * Optimized search with smart mode selection
+   */
+  async search(
+    config: SearchConfig,
+    abortSignal?: AbortSignal
+  ): Promise<ToolOutput> {
+    const startTime = Date.now();
+
+    try {
+      let results: QueryResult[];
+
+      if (config.mode === "single") {
+        results = [await this.executeSingle(config.query!, {
+          maxResults: config.maxResults,
+          timeout: config.timeout,
+        })];
+      } else if (config.mode === "multi" && config.queries) {
+        results = await this.executeMulti(config.queries, {
+          maxResults: config.maxResults,
+          concurrency: config.concurrency,
+          timeout: config.timeout,
+        });
+      } else {
+        throw new PerplexitySearchError(
+          "Invalid search configuration",
+          ErrorCode.UNEXPECTED_ERROR
+        );
+      }
+
+      const executionTime = Date.now() - startTime;
+      const totalResults = results.reduce((sum, r) => sum + r.results.length, 0);
+
+      return {
+        success: true,
+        results,
+        metadata: {
+          totalQueries: results.length,
+          totalResults,
+          executionTime,
+          mode: config.mode,
+        },
+      };
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+
+      return {
+        success: false,
+        results: [],
+        error: this.formatError(error),
+        metadata: {
+          totalQueries: 0,
+          totalResults: 0,
+          executionTime,
+          mode: config.mode,
+        },
+      };
+    }
+  }
+
+  /**
+   * High-performance batch processing
+   */
+  async processBatch(
+    queries: string[],
+    options: {
+      maxResults?: number;
+      batchSize?: number;
+      concurrency?: number;
+      onProgress?: (completed: number, total: number) => void;
+    } = {}
+  ): Promise<QueryResult[]> {
+    const batchSize = options.batchSize || 20;
+    const allResults: QueryResult[] = [];
+
+    for (let i = 0; i < queries.length; i += batchSize) {
+      const batch = queries.slice(i, i + batchSize);
+      const batchResults = await this.executeMulti(batch, {
+        maxResults: options.maxResults,
+        concurrency: options.concurrency,
+      });
+
+      allResults.push(...batchResults);
+
+      if (options.onProgress) {
+        options.onProgress(Math.min(i + batchSize, queries.length), queries.length);
+      }
+    }
+
+    return allResults;
+  }
+
+  /**
+   * Optimized response transformation
+   */
+  private transformResponse(searchResponse: any, maxResults: number): SearchResult[] {
+    if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
+      return [];
+    }
+
+    return searchResponse.results
+      .slice(0, maxResults)
+      .map((result: any) => ({
         title: result.title || 'Untitled',
         url: result.url || '',
         snippet: result.snippet || '',
         date: result.date || undefined,
       }));
-    } else {
-      results = [{
-        title: 'Search Result',
-        url: 'https://www.perplexity.ai/',
-        snippet: 'No content available',
-        date: undefined,
-      }];
+  }
+
+  /**
+   * Extract specific query results from multi-query response
+   */
+  private extractQueryResults(searchResponse: any, queryIndex: number, maxResults: number): SearchResult[] {
+    if (!searchResponse.results || !Array.isArray(searchResponse.results)) {
+      return [];
     }
 
-    return results.slice(0, maxResults);
-  }
-
-  private categorizeSearchError(error: unknown): PerplexitySearchError {
-    let message = "Unexpected error occurred";
-    let details: Record<string, unknown> = {};
-
-    if (error instanceof Error) {
-      message = error.message;
-      details = {
-        originalError: error.message,
-        stack: error.stack,
-      };
+    // For multi-query responses, results are typically structured per query
+    // This handles both array and object-based response formats
+    if (Array.isArray(searchResponse.results[queryIndex])) {
+      return searchResponse.results[queryIndex]
+        .slice(0, maxResults)
+        .map((result: any) => ({
+          title: result.title || 'Untitled',
+          url: result.url || '',
+          snippet: result.snippet || '',
+          date: result.date || undefined,
+        }));
     }
 
-    return new PerplexitySearchError(message, ErrorCode.UNEXPECTED_ERROR, details);
+    // Fallback to flat structure
+    return this.transformResponse(searchResponse, maxResults);
   }
 
-  private async executeBatchQueries(
-    queryList: string[],
-    searchConfig: SearchConfig,
-    abortSignal: AbortSignal
-  ): Promise<QueryResult[]> {
-    const concurrencyLimit = searchConfig.concurrency || 5;
-    const semaphore = new Array(concurrencyLimit).fill(null);
-
-    let queryIndex = 0;
-    const results: QueryResult[] = [];
-
-    const executeNextQuery = async (): Promise<void> => {
-      if (abortSignal.aborted) {
-        return;
-      }
-
-      const currentQueryIndex = queryIndex++;
-      if (currentQueryIndex >= queryList.length) {
-        return;
-      }
-
-      const currentQuery = queryList[currentQueryIndex];
-
-      this.streamEvent(this.createStreamingEvent("query_start", {
-        query: currentQuery,
-        index: currentQueryIndex,
-        total: queryList.length
-      }));
-
-      try {
-        const queryResult = await this.executeSingleQuery(currentQuery, searchConfig, abortSignal);
-        results.push(queryResult);
-
-        this.streamEvent(this.createStreamingEvent("query_complete", {
-          query: currentQuery,
-          index: currentQueryIndex,
-          resultCount: queryResult.results.length
-        }));
-      } catch (error) {
-        const errorResult = this.createErrorQueryResult(currentQuery, error);
-        results.push(errorResult);
-
-        this.streamEvent(this.createStreamingEvent("error", {
-          query: currentQuery,
-          index: currentQueryIndex,
-          error: errorResult.error
-        }));
-      }
-    };
-
-    const workerPromises = semaphore.map(async () => {
-      while (!abortSignal.aborted && queryIndex < queryList.length) {
-        await executeNextQuery();
-      }
-    });
-
-    await Promise.all(workerPromises);
-
-    return results.sort((resultA, resultB) => {
-      const indexA = queryList.indexOf(resultA.query);
-      const indexB = queryList.indexOf(resultB.query);
-      return indexA - indexB;
-    });
-  }
-
-  private createErrorQueryResult(query: string, error: unknown): QueryResult {
-    return {
-      query,
-      results: [],
-      error: error instanceof PerplexitySearchError ? {
+  /**
+   * Consistent error formatting
+   */
+  private formatError(error: unknown): {
+    code: ErrorCode;
+    message: string;
+    details?: Record<string, unknown>;
+  } {
+    if (error instanceof PerplexitySearchError) {
+      return {
         code: error.code,
         message: error.message,
         details: error.details,
-      } : {
-        code: ErrorCode.UNEXPECTED_ERROR,
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-    };
-  }
-
-  async search(
-  searchConfig: SearchConfig,
-  abortSignal: AbortSignal = new AbortController().signal
-): Promise<ToolOutput> {
-    const searchStartTime = Date.now();
-
-    try {
-      this.streamEvent(this.createStreamingEvent("start", {
-        mode: searchConfig.mode,
-        maxResults: searchConfig.maxResults,
-        concurrency: searchConfig.concurrency,
-      }));
-
-      const queryResults = await this.executeQueryBasedOnMode(searchConfig, abortSignal);
-      const searchMetrics = this.calculateSearchMetrics(queryResults, searchStartTime);
-
-      this.streamEvent(this.createStreamingEvent("complete", searchMetrics));
-
-      return {
-        success: true,
-        results: queryResults,
-        metadata: searchMetrics,
-      };
-    } catch (error) {
-      const executionTime = Date.now() - searchStartTime;
-      const errorOutput = this.formatSearchError(error);
-
-      this.streamEvent(this.createStreamingEvent("error", errorOutput));
-
-      return {
-        success: false,
-        results: [],
-        error: errorOutput,
-        metadata: {
-          totalQueries: 0,
-          totalResults: 0,
-          executionTime,
-          mode: searchConfig.mode,
-        },
       };
     }
-  }
-
-  private async executeQueryBasedOnMode(
-    searchConfig: SearchConfig,
-    abortSignal: AbortSignal
-  ): Promise<QueryResult[]> {
-    if (searchConfig.mode === "single") {
-      return [await this.executeSingleQuery(searchConfig.query!, searchConfig, abortSignal)];
-    } else {
-      return this.executeBatchQueries(searchConfig.queries!, searchConfig, abortSignal);
-    }
-  }
-
-  private calculateSearchMetrics(queryResults: QueryResult[], startTime: number): {
-    totalQueries: number;
-    totalResults: number;
-    executionTime: number;
-    mode: string;
-  } {
-    const totalResults = queryResults.reduce((sum, result) => sum + result.results.length, 0);
-    const executionTime = Date.now() - startTime;
 
     return {
-      mode: queryResults.length === 1 ? 'single' : 'multi',
-      totalQueries: queryResults.length,
-      totalResults,
-      executionTime,
-    } as const;
-  }
-
-  private formatSearchError(error: unknown): {
-    code: ErrorCode;
-    message: string;
-    details: Record<string, unknown>;
-  } {
-    return error instanceof PerplexitySearchError ? {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-    } : {
       code: ErrorCode.UNEXPECTED_ERROR,
       message: error instanceof Error ? error.message : "Unknown error",
-      details: error instanceof Error ? { stack: error.stack } : {},
+      details: error instanceof Error ? { stack: error.stack } : undefined,
     };
   }
 }
 
 /**
- * Simplified API for single query search (matches original perplexity-search-sdk.js)
+ * Simplified high-performance search functions
  */
-export async function search(
+export async function fastSearch(
   query: string,
   options: {
     maxResults?: number;
-    country?: string;
+    model?: string;
     timeout?: number;
-    workspace?: string;
   } = {}
 ): Promise<{
   success: boolean;
   results?: SearchResult[];
+  executionTime?: number;
   error?: string;
-  totalCount?: number;
-  duration?: number;
 }> {
   try {
-    const tool = new PerplexitySearchTool(options.workspace, {
-      resilienceProfile: 'balanced',
-    });
-
-    const result = await tool.runTask({
-      op: 'search',
-      args: {
-        query,
-        maxResults: options.maxResults || 5,
-        country: options.country,
-      },
-      options: {
-        timeoutMs: options.timeout || 30000,
-        workspace: options.workspace,
-      },
-    });
-
-    if (result.ok && result.data) {
-      return {
-        success: true,
-        results: result.data.results,
-        totalCount: result.data.totalCount,
-        duration: result.duration,
-      };
-    } else {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
       return {
         success: false,
-        error: result.error?.message || 'Unknown error occurred',
-        duration: result.duration,
+        error: "Perplexity API key not found in environment variables",
       };
     }
+
+    const engine = new OptimizedPerplexitySearchEngine(apiKey);
+    const result = await engine.executeSingle(query, options);
+
+    return {
+      success: result.results.length > 0,
+      results: result.results,
+      executionTime: result.executionTime,
+      error: result.error?.message,
+    };
   } catch (error) {
     return {
       success: false,
@@ -353,169 +472,52 @@ export async function search(
   }
 }
 
-/**
- * Simplified API for multi-query search (matches original perplexity-multi-search-sdk.js)
- */
-export async function multiSearch(
+export async function fastMultiSearch(
   queries: string[],
   options: {
     maxResults?: number;
-    country?: string;
+    model?: string;
     concurrency?: number;
     timeout?: number;
-    workspace?: string;
-    failFast?: boolean;
+    onProgress?: (completed: number, total: number) => void;
   } = {}
 ): Promise<{
   success: boolean;
-  results?: Array<{
-    query: string;
-    results: SearchResult[];
-    totalCount: number;
-    success: boolean;
-    error?: string;
-  }>;
+  results?: QueryResult[];
+  executionTime?: number;
+  totalResults?: number;
   error?: string;
-  summary?: {
-    total: number;
-    successful: number;
-    failed: number;
-    totalDuration: number;
-  };
 }> {
   try {
-    const tool = new PerplexitySearchTool(options.workspace, {
-      resilienceProfile: 'balanced',
-    });
-
-    const batchInput = {
-      version: '1.0.0' as const,
-      requests: queries.map(query => ({
-        op: 'search' as const,
-        args: {
-          query,
-          maxResults: options.maxResults || 5,
-          country: options.country,
-        },
-      })),
-      options: {
-        concurrency: options.concurrency || 5,
-        timeoutMs: options.timeout || 60000,
-        workspace: options.workspace,
-        failFast: options.failFast || false,
-      },
-    };
-
-    const result = await tool.runBatch(batchInput);
-
-    if (result.ok) {
-      const processedResults = result.results.map(searchResult => {
-        if (searchResult.ok && searchResult.data) {
-          return {
-            query: searchResult.data.query,
-            results: searchResult.data.results,
-            totalCount: searchResult.data.totalCount,
-            success: true,
-          };
-        } else {
-          return {
-            query: 'unknown',
-            results: [],
-            totalCount: 0,
-            success: false,
-            error: searchResult.error?.message || 'Unknown error',
-          };
-        }
-      });
-
-      return {
-        success: true,
-        results: processedResults,
-        summary: result.summary,
-      };
-    } else {
+    const apiKey = process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
       return {
         success: false,
-        error: 'Batch search failed',
-        summary: result.summary,
+        error: "Perplexity API key not found in environment variables",
       };
     }
+
+    const engine = new OptimizedPerplexitySearchEngine(apiKey);
+    const startTime = performance.now();
+
+    const results = await engine.processBatch(queries, {
+      ...options,
+      onProgress: options.onProgress,
+    });
+
+    const totalResults = results.reduce((sum, r) => sum + r.results.length, 0);
+    const executionTime = performance.now() - startTime;
+
+    return {
+      success: true,
+      results,
+      executionTime,
+      totalResults,
+    };
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-/**
- * Validate API key
- */
-export async function validateApiKey(apiKey?: string): Promise<{
-  valid: boolean;
-  error?: string;
-}> {
-  try {
-    const originalKey = process.env.PERPLEXITY_API_KEY;
-    if (apiKey) {
-      process.env.PERPLEXITY_API_KEY = apiKey;
-    }
-
-    const tool = new PerplexitySearchTool();
-
-    const result = await tool.runTask({
-      op: 'search',
-      args: {
-        query: 'test',
-        maxResults: 1,
-      },
-      options: {
-        timeoutMs: 5000,
-      },
-    });
-
-    if (apiKey) {
-      process.env.PERPLEXITY_API_KEY = originalKey;
-    }
-
-    return {
-      valid: result.ok,
-      error: result.ok ? undefined : result.error?.message,
-    };
-  } catch (error) {
-    if (apiKey) {
-      process.env.PERPLEXITY_API_KEY = process.env.PERPLEXITY_AI_API_KEY;
-    }
-    
-    return {
-      valid: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Get tool health and status information
- */
-export async function getHealthStatus(workspace?: string): Promise<{
-  healthy: boolean;
-  apiKeyPresent: boolean;
-  workspaceValid: boolean;
-  resilienceStats: any;
-  timestamp: string;
-}> {
-  const tool = new PerplexitySearchTool(workspace);
-  return tool.getHealthStatus();
-}
-
-/**
- * Get performance metrics
- */
-export async function getMetrics(workspace?: string): Promise<{
-  metrics: any;
-  resilienceStats: any;
-  timestamp: string;
-}> {
-  const tool = new PerplexitySearchTool(workspace);
-  return tool.getMetrics();
 }
