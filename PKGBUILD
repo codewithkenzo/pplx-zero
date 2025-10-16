@@ -3,7 +3,7 @@
 
 pkgname=pplx-zero
 pkgver=1.1.4
-pkgrel=2
+pkgrel=3
 pkgdesc="Fast Perplexity AI search CLI with multimodal support - minimal setup, maximal results"
 arch=('any')
 url="https://github.com/codewithkenzo/pplx-zero"
@@ -33,7 +33,7 @@ build() {
   cd "$pkgname-$pkgver"
 
   # Install dependencies and build
-  bun install --frozen-lockfile
+  bun install
   bun run build
 
   # Verify binary was created
