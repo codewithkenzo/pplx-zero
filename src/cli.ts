@@ -1,10 +1,17 @@
 #!/usr/bin/env bun
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { OptimizedPerplexitySearchEngine, fastSearch, fastMultiSearch } from './core.js';
+import { HistoryManager } from './history/manager.js';
+import { ExportFormatter } from './export/formatter.js';
+import { UpdateChecker } from './update/checker.js';
+import { FileUtils } from './utils/file.js';
 import type { SearchResult } from './schema.js';
+import type { ExportOptions } from './export/types.js';
+import { randomUUID } from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,6 +28,11 @@ interface OptimizedCliOptions {
   version?: boolean;
   help?: boolean;
   'help-advanced'?: boolean;
+  history?: boolean;
+  'update-check'?: boolean;
+
+  // Export options
+  export?: string;
 
   // Advanced options
   input?: string;
@@ -44,8 +56,17 @@ interface ParsedArgs {
   positionals: string[];
 }
 
+// Parse arguments, handling history override for help
+const args = process.argv.slice(2);
+const hasHistoryFlag = args.includes('--history') || args.includes('-h');
+const hasHelpFlag = args.includes('--help');
+const hasVersionFlag = args.includes('--version') || args.includes('-v');
+
+// If -h is used and not combined with other flags, treat as history
+const historyOverride = hasHistoryFlag && !hasHelpFlag && !hasVersionFlag && args.length <= 2;
+
 const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = parseArgs({
-  args: process.argv.slice(2),
+  args: args,
   options: {
     // Basic options
     query: { type: 'string', short: 'q' },
@@ -56,8 +77,13 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
 
     // Commands
     version: { type: 'boolean', short: 'v' },
-    help: { type: 'boolean', short: 'h' },
+    help: { type: 'boolean' },
     'help-advanced': { type: 'boolean' },
+    history: { type: 'boolean', short: 'h' },
+    'update-check': { type: 'boolean' },
+
+    // Export options
+    export: { type: 'string' },
 
     // Advanced options
     input: { type: 'string', short: 'I' },
@@ -80,12 +106,12 @@ const { values: cliOptions, positionals: commandLineQueries }: ParsedArgs = pars
 
 function showHelp() {
   console.error(`
-PPLX-Zero - Perplexity AI search CLI
+PPLX-Zero - Perplexity AI search CLI with multi-search, history, and export
 
 USAGE:
   pplx [OPTIONS] [QUERY...]
 
-OPTIONS:
+SEARCH OPTIONS:
   -m, --model <model>         AI model: sonar, sonar-pro, sonar-reasoning, sonar-deep-research
   -n, --max-results <n>       Maximum results per query (default: 5)
   -c, --concurrency <n>       Concurrency for batch searches (default: 5)
@@ -95,22 +121,75 @@ OPTIONS:
   -o, --format <format>       Output format: json|jsonl (default: json)
   -q, --query <query>         Search query
 
+EXPORT OPTIONS:
+      --export <filename>     Export results to file (supports .txt, .md, .json)
+
+HISTORY OPTIONS:
+  -h, --history [n]           Show search history (last n searches, max 50)
+      --update-check          Check for available updates
+
+HELP OPTIONS:
+      --help                  Show this help message
+  -v, --version               Show version information
+
 EXAMPLES:
+  # Single search
   pplx "latest AI developments"
 
-  pplx --model sonar-pro "Explain quantum computing"
+  # Multi-search (automatic detection)
+  pplx "AI trends 2024" "Rust vs Go" "Web3 adoption"
 
+  # Multi-search with export
+  pplx --model sonar-pro --export research.txt "quantum" "blockchain"
+
+  # Search with file attachments
   pplx --file report.pdf "Summarize this document"
-
   pplx --image screenshot.png "What is this showing?"
 
-  pplx --concurrency 3 "query 1" "query 2" "query 3"
+  # View history
+  pplx --history          # Show all history (up to 50)
+  pplx --history 10       # Show last 10 searches
+  pplx -h 10             # Same as above
 
-  pplx --max-results 10 "machine learning trends"
+  # Export results
+  pplx --export results.md "machine learning trends"
+  pplx --export analysis.txt "AI developments" "blockchain news"
+
+  # Advanced models
+  pplx --model sonar-reasoning "Explain quantum computing"
+  pplx --model sonar-deep-research --export research.pdf "comprehensive AI analysis"
+
+HISTORY & EXPORT:
+  • History is automatically saved to ~/.pplx-zero/history/
+  • Export files are saved with cleaned, readable text
+  • All searches are logged with metadata and performance metrics
 
 Get your API key: https://www.perplexity.ai/account/api/keys
 Set environment variable: export PERPLEXITY_API_KEY="your-key"
 `);
+  process.exit(0);
+}
+
+// Handle special commands first
+if (historyOverride || cliOptions.history) {
+  const historyManager = new HistoryManager();
+  const limit = args.find(arg => /^\d+$/.test(arg)) ? parseInt(args.find(arg => /^\d+$/.test(arg))!) : undefined;
+
+  if (limit && limit > 0) {
+    const history = await historyManager.formatHistory(limit);
+    console.log(history);
+  } else {
+    const history = await historyManager.formatHistory();
+    console.log(history);
+  }
+  process.exit(0);
+}
+
+if (cliOptions['update-check']) {
+  const updateChecker = new UpdateChecker();
+  const versionInfo = await updateChecker.getVersionInfo();
+  console.log(versionInfo);
+  await updateChecker.showUpdateNotification(true);
   process.exit(0);
 }
 
@@ -119,8 +198,9 @@ if (cliOptions.help) {
 }
 
 if (cliOptions.version) {
-  const packageInfo = await import('../package.json', { assert: { type: 'json' } });
-  console.error(`pplx v${packageInfo.default.version}`);
+  const updateChecker = new UpdateChecker();
+  const versionInfo = await updateChecker.getVersionInfo();
+  console.error(versionInfo);
   process.exit(0);
 }
 
@@ -332,10 +412,102 @@ async function executeAdvancedModel(
   }
 }
 
+/**
+ * Export results to file with appropriate formatting
+ */
+async function exportResults(
+  results: any,
+  queries: string[],
+  exportFilename: string,
+  metadata: any
+): Promise<string> {
+  try {
+    // Determine export format from file extension
+    const format = exportFilename.endsWith('.md') ? 'md' :
+                   exportFilename.endsWith('.json') ? 'json' : 'txt';
+
+    // Prepare export data
+    const exportData = {
+      queries,
+      results: Array.isArray(results.results) ? results.results : [results],
+      metadata: {
+        timestamp: new Date().toISOString(),
+        queryCount: queries.length,
+        totalResults: Array.isArray(results.results) ?
+          results.results.reduce((sum: number, r: any) => sum + (r.results?.length || 1), 0) :
+          (results.results?.length || 1),
+        executionTime: metadata.executionTime,
+        model: metadata.model,
+        success: metadata.success,
+      }
+    };
+
+    // Format content
+    const formattedContent = ExportFormatter.format(exportData, {
+      format,
+      filename: exportFilename,
+      includeMetadata: true,
+      includeTimestamp: true,
+      cleanText: true,
+    });
+
+    // Create export directory and write file
+    const exportDir = await FileUtils.createExportDir();
+    const fullFilename = ExportFormatter.generateFilename(exportFilename, format, false);
+    const exportPath = join(exportDir, fullFilename);
+
+    await FileUtils.writeFileWithBackup(exportPath, formattedContent);
+
+    return exportPath;
+  } catch (error) {
+    console.error('Export failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Log search to history
+ */
+async function logToHistory(
+  queries: string[],
+  results: any,
+  metadata: any,
+  exportPath?: string
+): Promise<void> {
+  try {
+    const historyManager = new HistoryManager();
+
+    await historyManager.addEntry({
+      sessionId: randomUUID(),
+      queries,
+      queryCount: queries.length,
+      model: metadata.model,
+      maxResults: metadata.maxResults,
+      executionTime: metadata.executionTime,
+      success: metadata.success,
+      resultsCount: Array.isArray(results.results) ?
+        results.results.reduce((sum: number, r: any) => sum + (r.results?.length || 1), 0) :
+        (results.results?.length || 1),
+      exportPath,
+      mode: metadata.mode,
+    });
+  } catch (error) {
+    // Don't let history errors break the main flow
+    console.error('History logging failed:', error);
+  }
+}
+
 async function main(): Promise<void> {
   const executionStartTime = Date.now();
+  const sessionId = randomUUID();
 
   try {
+    // Check for updates (non-blocking)
+    const updateChecker = new UpdateChecker();
+    updateChecker.showUpdateNotification().catch(() => {
+      // Don't let update checks fail the main execution
+    });
+
     const apiKey = process.env.PERPLEXITY_API_KEY;
     if (!apiKey) {
       throw new Error('PERPLEXITY_API_KEY environment variable is required');
@@ -507,6 +679,29 @@ async function main(): Promise<void> {
         output.error = results.error;
       }
 
+      // Prepare metadata for export and history
+      const metadata = {
+        executionTime: results.executionTime || 0,
+        model: selectedModel,
+        maxResults,
+        success: results.success,
+        mode: output.mode,
+      };
+
+      // Handle export if requested
+      let exportPath: string | undefined;
+      if (cliOptions.export) {
+        try {
+          exportPath = await exportResults(output, queries, cliOptions.export, metadata);
+          console.error(`📄 Results exported to: ${exportPath}`);
+        } catch (error) {
+          console.error('❌ Export failed:', error instanceof Error ? error.message : String(error));
+        }
+      }
+
+      // Log to history
+      await logToHistory(queries, output, metadata, exportPath);
+
       if (outputFormat === 'jsonl') {
         console.log(JSON.stringify(output));
       } else {
@@ -606,6 +801,29 @@ async function main(): Promise<void> {
           mode: needsAdvancedRouting ? 'advanced' : 'search-api',
         };
 
+        // Prepare metadata for export and history
+        const metadata = {
+          executionTime: output.summary.totalDuration,
+          model: selectedModel,
+          maxResults,
+          success: output.ok,
+          mode: output.mode,
+        };
+
+        // Handle export if requested
+        let exportPath: string | undefined;
+        if (cliOptions.export) {
+          try {
+            exportPath = await exportResults(output, queries, cliOptions.export, metadata);
+            console.error(`📄 Results exported to: ${exportPath}`);
+          } catch (error) {
+            console.error('❌ Export failed:', error instanceof Error ? error.message : String(error));
+          }
+        }
+
+        // Log to history
+        await logToHistory(queries, output, metadata, exportPath);
+
         if (outputFormat === 'jsonl') {
           for (const result of multiResults) {
             console.log(JSON.stringify(result));
@@ -640,6 +858,29 @@ async function main(): Promise<void> {
           mode: 'search-api',
           error: results.error,
         };
+
+        // Prepare metadata for export and history
+        const metadata = {
+          executionTime: results.executionTime || 0,
+          model: selectedModel,
+          maxResults,
+          success: results.success,
+          mode: output.mode,
+        };
+
+        // Handle export if requested
+        let exportPath: string | undefined;
+        if (cliOptions.export) {
+          try {
+            exportPath = await exportResults(output, queries, cliOptions.export, metadata);
+            console.error(`📄 Results exported to: ${exportPath}`);
+          } catch (error) {
+            console.error('❌ Export failed:', error instanceof Error ? error.message : String(error));
+          }
+        }
+
+        // Log to history
+        await logToHistory(queries, output, metadata, exportPath);
 
         if (outputFormat === 'jsonl') {
           for (const result of output.results || []) {
