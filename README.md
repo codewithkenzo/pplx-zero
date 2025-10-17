@@ -1,404 +1,154 @@
-# PPLX-Zero
+# PPLX‑Zero
 
-> Fast Perplexity AI search CLI - minimal setup, maximal results
+Use the Perplexity API straight from the terminal — sub‑1s search API, ideal for coding agents and automation.
+Minimal setup, fast results, and practical flags for files, images, streaming, and batch workflows.
 
-<p align="center">
-  <a href="https://badge.fury.io/js/pplx-zero"><img src="https://badge.fury.io/js/pplx-zero.svg" alt="npm version"></a>
-  <a href="https://aur.archlinux.org/packages/pplx-zero"><img src="https://img.shields.io/aur/version/pplx-zero?style=flat-square" alt="AUR package"></a>
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white" alt="TypeScript"></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white" alt="Bun"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-</p>
+### What you can do
+- Ask, research, and stream answers instantly from the CLI with sensible defaults for rapid iteration.
+- Summarize documents and analyze images using a single command with optional model control.
+- Run batch jobs with concurrency and timeouts for agent pipelines and CI flows.
 
-A fast TypeScript CLI for Perplexity AI search with multimodal support. Built with Bun runtime for performance and reliability.
-
-## Features
-
-- **⚡ Fast Search** - Concurrent queries with intelligent rate limiting
-- **🎯 Simple Setup** - Works with just an API key, no configuration required
-- **📦 Batch Processing** - Handle multiple searches simultaneously
-- **🔄 Real-time Updates** - JSONL streaming progress events
-- **🖼️ File Analysis** - Process documents and images with AI models
-- **🤖 AI Models** - Sonar, Sonar Pro, Sonar Deep Research, Sonar Reasoning
-- **🛡️ Type Safe** - Full Zod validation and TypeScript support
-- **🌍 Cross-Platform** - Native Bun runtime support
-- **🔄 Auto-Update** - Background update checking to stay current
-
-## Quick Start
-
-### 1️⃣ Install
-
-**📦 Package Manager Installation (Recommended)**
-
-<p align="center">
-  <a href="https://badge.fury.io/js/pplx-zero"><img src="https://badge.fury.io/js/pplx-zero.svg" alt="npm version"></a>
-  <a href="https://aur.archlinux.org/packages/pplx-zero"><img src="https://img.shields.io/aur/version/pplx-zero?style=flat-square" alt="AUR package"></a>
-</p>
+### Install
+Choose one:
 
 ```bash
-# npm (Node.js package manager) - Global installation
+# npm or bun (global)
 npm install -g pplx-zero
-
-# AUR (Arch Linux) - Binary package
-yay -S pplx-zero
-
-# AUR (Arch Linux) - Manual build
-git clone https://aur.archlinux.org/pplx-zero.git
-cd pplx-zero
-makepkg -si
-
-# Verify installation
 pplx --version
 ```
 
-**🔨 Manual Installation**
+
+or
 
 ```bash
-# Clone and build locally
-git clone https://github.com/codewithkenzo/pplx-zero.git
-cd pplx-zero
-bun install && bun run build
-
-# Add to PATH
-sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/pplx
-
-# Verify installation
+# AUR (Arch Linux)
+yay -S pplx-zero
 pplx --version
 ```
 
-### 2️⃣ Setup API Key
 
-**Linux/macOS:**
+or
+
+```bash
+# Build from source
+# 1) clone the repository
+# 2) enter the folder
+# 3) build and link the CLI
+bun install && bun run build
+sudo ln -s "$(pwd)/dist/cli.js" /usr/local/bin/pplx
+pplx --version
+```
+
+
+### Configure
+Set your API key as an environment variable before running commands.
+
+Linux/macOS:
 ```bash
 export PERPLEXITY_API_KEY="your-api-key"
 ```
 
-**Windows:**
+
+Windows:
 ```cmd
 setx PERPLEXITY_API_KEY "your-api-key"
 ```
 
-**Get your API key:** https://www.perplexity.ai/account/api/keys
 
-### 3️⃣ Start Searching
+Get your key from your Perplexity account and keep it private to your machine or CI secrets manager.
 
+### Quick examples
+Simple search (default model: sonar)
 ```bash
-# Simple search
-pplx "latest AI developments"
-
-# Choose model for detailed analysis
-pplx --model sonar-pro "Explain quantum computing"
-
-# Analyze document
-pplx --file report.pdf "Summarize this document"
-
-# Analyze image
-pplx --image screenshot.png "What does this interface do?"
-
-# Document + image analysis
-pplx --file data.csv --image chart.png "Analyze this data"
-
-# Advanced AI models
-pplx --model sonar-reasoning "Solve this math problem"
-pplx --model sonar-deep-research "History of artificial intelligence"
-
-# See basic help
-pplx --help
+pplx "python type hints best practices"
 ```
 
-## Auto-Update
 
-PPLX-Zero includes intelligent auto-update functionality that runs in the background to keep your CLI current.
-
-### How It Works
-
-- **Background Checking**: Automatically checks for updates every 24 hours when you run searches
-- **Non-Blocking**: Never slows down your search queries - updates happen in the background
-- **Smart Caching**: Uses intelligent caching to avoid unnecessary network requests
-- **Silent by Default**: Runs quietly without interrupting your workflow
-
-### Update Commands
-
+Deep research or sonar-pro or reasoning when you need more steps or web context
 ```bash
-# Check for updates manually
-pplx update --check
-
-# Install available updates automatically
-pplx update --auto
-
-# Show version information
-pplx version
-
-# Check updates with version command
-pplx version --check-updates
+pplx -m sonar-pro "React 19 Hooks"
+pplx -m sonar-deep-research "best Rust web frameworks 2025"
+pplx -m sonar-reasoning "prove this algorithm runs in O(n log n)"
 ```
 
-### Update Methods
 
-The auto-update system tries multiple package managers in order of preference:
-
-1. **npm global** (`npm update -g pplx-zero`)
-2. **bun global** (`bun update -g pplx-zero`)
-3. **yarn global** (`yarn global upgrade pplx-zero`)
-4. **pnpm global** (`pnpm update -g pplx-zero`)
-
-If automatic updates fail, you'll get helpful instructions to update manually.
-
-### Configuration
-
-Auto-update settings are stored in `~/.pplx-zero/update-cache.json`:
-
-- **Check Interval**: 24 hours by default
-- **Quiet Mode**: Silent operation to not interrupt workflow
-- **Auto Install**: Disabled by default for safety
-
-### Privacy & Performance
-
-- **Minimal Network**: Only checks npm registry for version information
-- **No Data Collection**: Never sends search queries or personal data
-- **Fast Performance**: Cached results prevent repeated network requests
-- **Local Only**: All update logic runs locally on your machine
-
-## Usage Guide
-
-### Command Line Options
-
-**Quick Reference:**
+Summarize a PDF report quickly
 ```bash
-# Basic search
-pplx "latest AI developments"
-
-# File analysis (simplified)
-pplx -f document.pdf "Summarize this"
-
-# Advanced batch processing
-pplx --input queries.json -c 10 -t 60000
-
-# See all options
-pplx --help
+pplx -f report.pdf "summarize key findings and risks"
 ```
 
-**Essential Commands:**
+
+Understand an interface from a screenshot
 ```bash
-# Model selection
-pplx -m sonar-pro "Detailed analysis"
-
-# File + image
-pplx -f doc.md -i chart.png "Analyze both"
-
-# Output format
-pplx -o jsonl "Get streaming output"
-
-# Async with webhook
-pplx --async --webhook https://api.example.com "Long task"
+pplx -i screenshot.png "what is this UI and what are the next steps?"
 ```
 
-### Batch Processing
 
-Create `queries.json`:
+Combine a doc and an image in one prompt
+```bash
+pplx -f data.csv -i chart.png "spot anomalies and explain the chart"
+```
 
+
+Stream newline‑delimited JSON for agents or UNIX pipes
+```bash
+pplx -o jsonl "ai trends"
+```
+
+
+Batch from a JSON file (concurrency and timeout shown)
 ```json
 {
   "version": "1.0.0",
   "requests": [
-    {"op": "search", "args": {"query": "AI trends", "maxResults": 5}},
-    {"op": "search", "args": {"query": "TypeScript patterns", "maxResults": 3}},
-    {"op": "search", "args": {"query": "Bun performance", "maxResults": 3}}
+    { "op": "search", "args": { "query": "AI trends", "maxResults": 5 } },
+    { "op": "search", "args": { "query": "TypeScript patterns", "maxResults": 3 } }
   ],
-  "options": {
-    "concurrency": 5,
-    "timeoutMs": 30000
-  }
+  "options": { "concurrency": 5, "timeoutMs": 30000 }
 }
 ```
 
-Process with:
 
 ```bash
-pplx --input queries.json --format jsonl
+pplx -I queries.json -o jsonl -c 5 -t 30000
 ```
 
-### File Attachments
 
-Supported file formats for analysis:
-
-**Documents (max 50MB):**
-- PDF, DOC, DOCX, TXT, RTF, MD
-
-**Images (max 50MB):**
-- PNG, JPEG, WebP, HEIF, HEIC, GIF
-
-**Examples:**
+Fire‑and‑forget async with a webhook callback (agent workflows)
 ```bash
-# Document analysis
-pplx --attach report.pdf "Summarize this document"
-
-# Image analysis
-pplx --attach-image screenshot.png "Analyze this interface"
-
-# Multiple files
-pplx --attach document.txt --attach-image chart.png "Analyze this data"
+pplx --async --webhook http://localhost:3000/callback "long research task"
 ```
 
-### Programmatic Usage
 
-```typescript
+### Flags
+- -m, --model: sonar | sonar-pro | sonar-deep-research | sonar-reasoning (default: sonar) 
+- -f, --file: attach a document (PDF, DOC, DOCX, TXT, RTF, MD; up to ~50MB)
+- -i, --image: attach an image (PNG, JPEG, WebP, HEIF/HEIC, GIF; up to ~50MB)
+- -o, --format: json | jsonl (default: json) 
+- -I, --input: read batch requests from a JSON file
+- -c, --concurrency: max parallel requests, e.g., 5 (default: 5)
+- -t, --timeout: request timeout in ms, e.g., 30000 (default: 30000)
+- --async: process requests asynchronously
+- --webhook: URL receiving async notifications
+- -h, --help: show help
+- -v, --version: show version
+
+### Programmatic use (optional)
+Use the toolkit directly in TypeScript when embedding into agents or services.
+```ts
 import { PerplexitySearchTool } from 'pplx-zero';
 
 const tool = new PerplexitySearchTool();
 
 const result = await tool.runBatch({
   version: "1.0.0",
-  requests: [{
-    op: "search",
-    args: { query: "TypeScript best practices", maxResults: 5 }
-  }]
+  requests: [{ op: "search", args: { query: "TypeScript best practices", maxResults: 5 } }]
 });
 
 console.log(result);
 ```
 
-## Configuration
 
-### Simplified Options (Everyday Usage)
-
-| Option | Short | Type | Default | Description |
-|--------|-------|------|---------|-------------|
-| `--file` | `-f` | string | - | Attach document (PDF, DOC, DOCX, TXT, RTF, MD) |
-| `--image` | `-i` | string | - | Attach image (PNG, JPEG, WebP, HEIF, HEIC, GIF) |
-| `--format` | `-o` | string | json | Output format: json|jsonl |
-| `--model` | `-m` | string | sonar | AI model: sonar, sonar-pro, sonar-deep-research, sonar-reasoning |
-| `--version` | `-v` | boolean | - | Show version |
-| `--help` | `-h` | boolean | - | Show basic help |
-
-### Update Commands
-
-| Command | Options | Description |
-|---------|---------|-------------|
-| `pplx update` | `--check` | Check for available updates |
-| `pplx update` | `--auto` | Install available updates automatically |
-| `pplx version` | `--check-updates` | Show version and check for updates |
-| `pplx version` | `--verbose` | Show detailed version information |
-
-### Advanced Options (Power Users)
-
-| Option | Short | Type | Default | Description |
-|--------|-------|------|---------|-------------|
-| `--input` | `-I` | string | - | Read batch requests from JSON file |
-| `--stdin` | `-s` | boolean | false | Read JSONL requests from stdin |
-| `--concurrency` | `-c` | number | 5 | Max concurrent requests (1-20) |
-| `--timeout` | `-t` | number | 30000 | Request timeout in ms (1000-300000) |
-| `--workspace` | `-w` | string | - | Workspace directory for sandboxing |
-| `--attach` | - | string[] | - | Attach document files (multiple) |
-| `--attach-image` | - | string[] | - | Attach image files (multiple) |
-| `--async` | - | boolean | false | Process requests asynchronously |
-| `--webhook` | - | string | - | Webhook URL for async notifications |
- |
-
-### Quick Reference
-
-```bash
-# Basic usage (simplified)
-pplx -f doc.pdf -m sonar-pro "analyze this"
-
-# Advanced usage (full control)
-pplx -I batch.json -c 10 -t 60000 --format jsonl "process all"
-
-# See all available options
-pplx --help
-```
-
-### AI Models
-
-- `sonar` - Fast, concise responses (default)
-- `sonar-pro` - Detailed, comprehensive responses
-- `sonar-deep-research` - In-depth research with web search
-- `sonar-reasoning` - Step-by-step logical reasoning
-
-## Output Formats
-
-### JSON (Default)
-```json
-{
-  "version": "1.0.0",
-  "ok": true,
-  "summary": {
-    "total": 1,
-    "successful": 1,
-    "failed": 0,
-    "totalDuration": 572
-  },
-  "results": [...]
-}
-```
-
-### JSONL (Streaming)
-```bash
-pplx --format jsonl "AI trends"
-```
-Each result printed as a separate JSON line for real-time processing.
-
-## Development
-
-```bash
-# Clone and build
-git clone https://github.com/codewithkenzo/pplx-zero.git
-cd pplx-zero
-bun install && bun run build
-
-# Development mode
-bun run dev
-
-# Type checking
-bun run typecheck
-
-# Build for production
-bun run build
-
-# Create binary
-bun run build:binary
-```
-
-## Architecture
-
-- **Bun Runtime** - Fast JavaScript runtime
-- **Zod Validation** - Type-safe schema validation
-- **Error Handling** - Resilient error recovery
-- **Concurrency Control** - Semaphore pattern for rate limiting
-- **Streaming Events** - Real-time progress updates
-
-## Security Features
-
-- Environment variable API key management
-- Input validation and sanitization
-- Request timeout protection
-- Error information filtering
-- No external dependencies beyond core runtime
-
-## Error Handling
-
-PPLX-Zero provides comprehensive error classification:
-
-```typescript
-enum ErrorCode {
-  VALIDATION_ERROR = "VALIDATION_ERROR",
-  API_KEY_MISSING = "API_KEY_MISSING",
-  API_ERROR = "API_ERROR",
-  TIMEOUT_ERROR = "TIMEOUT_ERROR",
-  NETWORK_ERROR = "NETWORK_ERROR",
-  RATE_LIMIT_ERROR = "RATE_LIMIT_ERROR",
-  UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
-}
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-**Built with [Bun](https://bun.sh) and [Perplexity AI](https://www.perplexity.ai)**
+### Notes
+- Use pplx --help to see all available options and short flags without scanning long docs.
+- Keep output in jsonl for streaming pipelines and agent frameworks that consume line‑by‑line events.*Built with [Bun](https://bun.sh) and [Perplexity AI](https://www.perplexity.ai)**

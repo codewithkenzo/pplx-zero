@@ -7,7 +7,13 @@ import { spawn } from 'node:child_process';
 import { writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import AutoUpdateService from '../../update/service.js';
+import {
+  checkForUpdatesCached,
+  forceUpdateCheck,
+  toggleAutoUpdate,
+  getAutoUpdateStatus,
+  type UpdateInfo
+} from '../../update/service.js';
 import { CliFormatter } from '../../cli/formatter.js';
 import type {
   UpdateCommandOptions,
@@ -24,7 +30,10 @@ export async function handleUpdateCommand(options: {
   silent?: boolean;
 }): Promise<CommandResult> {
   try {
-    if (options.check) {
+    if (options.check && options.auto) {
+      // Toggle auto-update when both flags are provided
+      return await handleToggleAutoUpdate();
+    } else if (options.check) {
       return await handleUpdateCheck(options.silent);
     } else if (options.auto) {
       return await handleAutoUpdate();
@@ -48,15 +57,8 @@ export async function handleUpdateCommand(options: {
  * Handle update check
  */
 async function handleUpdateCheck(silent: boolean = false): Promise<CommandResult> {
-  const autoUpdateService = new AutoUpdateService({
-    enabled: true,
-    checkInterval: 0, // Force check regardless of cache
-    autoInstall: false,
-    quietMode: silent,
-  });
-
   try {
-    const updateInfo = await autoUpdateService.forceUpdateCheck();
+    const updateInfo = await forceUpdateCheck();
 
     if (!updateInfo) {
       const errorMessage = 'Update check failed';
@@ -81,7 +83,18 @@ async function handleUpdateCheck(silent: boolean = false): Promise<CommandResult
         updateInfo.latestVersion
       );
       console.log(CliFormatter.supportsColors() ? updateMessage : CliFormatter.formatPlainText(updateMessage));
-      console.log('💡 Run "pplx update --auto" to install automatically');
+
+      // Show auto-update status
+      const status = await getAutoUpdateStatus();
+      if (status.enabled) {
+        console.log('💡 Auto-updates are enabled');
+        if (status.autoInstall) {
+          console.log('🔄 Auto-install is enabled - updates will install automatically');
+        }
+      } else {
+        console.log('💡 Run "pplx update --auto --check" to enable auto-updates');
+        console.log('   or run "pplx update --auto" to install manually');
+      }
     }
 
     return {
@@ -138,15 +151,7 @@ async function handleAutoUpdate(): Promise<CommandResult> {
     await writeFile(updateLockFile, currentPid.toString());
 
     try {
-      // Check for updates using AutoUpdateService
-      const autoUpdateService = new AutoUpdateService({
-        enabled: true,
-        checkInterval: 0, // Force check
-        autoInstall: false,
-        quietMode: false,
-      });
-
-      const updateInfo = await autoUpdateService.forceUpdateCheck();
+      const updateInfo = await forceUpdateCheck();
 
       if (!updateInfo || !updateInfo.updateAvailable) {
         console.log('ℹ️ No updates available. You are running the latest version.');
@@ -254,6 +259,39 @@ async function executeCommand(command: string, args: string[]): Promise<void> {
 }
 
 /**
+ * Handle toggle auto-update
+ */
+async function handleToggleAutoUpdate(): Promise<CommandResult> {
+  try {
+    const status = await getAutoUpdateStatus();
+
+    if (status.enabled) {
+      // Disable auto-update
+      await toggleAutoUpdate(false);
+      return {
+        exitCode: 0,
+        output: 'Auto-updates disabled',
+      };
+    } else {
+      // Enable auto-update
+      await toggleAutoUpdate(true, false);
+      return {
+        exitCode: 0,
+        output: 'Auto-updates enabled',
+      };
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`❌ Failed to toggle auto-update: ${errorMessage}`);
+
+    return {
+      exitCode: 1,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
  * Validate update command options
  */
 export function validateUpdateOptions(options: UpdateCommandOptions): {
@@ -268,13 +306,6 @@ export function validateUpdateOptions(options: UpdateCommandOptions): {
     };
   }
 
-  if (options.check && options.auto) {
-    // Cannot specify both options
-    return {
-      valid: false,
-      error: 'Cannot specify both --check and --auto options',
-    };
-  }
-
+  // Both options are now allowed - it toggles auto-update
   return { valid: true };
 }

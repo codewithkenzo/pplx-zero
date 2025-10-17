@@ -18,7 +18,7 @@ import { HistoryManager } from '../../history/manager.js';
 import { ExportFormatter } from '../../export/formatter.js';
 import { FileUtils } from '../../utils/file.js';
 import { CliFormatter } from '../../cli/formatter.js';
-import AutoUpdateService from '../../update/service.js';
+import { checkForUpdatesCached } from '../../update/service.js';
 import type {
   SearchOptions,
   SearchContext,
@@ -469,16 +469,9 @@ export async function handleSearchCommand(options: {
   const startTime = Date.now();
   const sessionId = randomUUID();
 
-  // Initialize auto-update service for background update checking
-  const autoUpdateService = new AutoUpdateService({
-    enabled: true,
-    checkInterval: 1440, // 24 hours
-    autoInstall: false,
-    quietMode: true,
-  });
-
-  // Start background update check without blocking the search
-  autoUpdateService.checkForUpdates().catch(error => {
+  // Check for updates in background with 24-hour caching
+  // This will only make an API call if 24 hours have passed since last check
+  checkForUpdatesCached().catch(error => {
     // Silently ignore update errors to not interfere with search functionality
     if (process.env.PPLX_DEBUG) {
       console.error('Background update check failed:', error);

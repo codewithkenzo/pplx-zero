@@ -1,45 +1,40 @@
 {
-  "name": "perplexity-search",
-  "version": "1.0.0",
-  "description": "Production-ready Perplexity AI search tool",
+  "name": "pplx-zero",
+  "version": "1.1.6",
+  "description": "Fast Perplexity AI search CLI with multimodal support - minimal setup, maximal results",
   "runtime": "bun",
-  "entrypoint": "./dist/cli.js",
+  "entrypoint": "./dist/index.js",
+  "bin": {
+    "pplx": "dist/index.js"
+  },
   "schemas": {
     "input": {
       "type": "object",
       "properties": {
-        "mode": {
-          "type": "string",
-          "enum": ["single", "multi"],
-          "description": "Search mode: single query or multiple queries"
-        },
         "query": {
           "type": "string",
-          "description": "Single search query (required in single mode)"
+          "description": "Search query or question to ask Perplexity AI"
         },
-        "queries": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Array of search queries (required in multi mode)"
+        "model": {
+          "type": "string",
+          "enum": ["sonar", "sonar-pro", "sonar-reasoning", "sonar-medium"],
+          "default": "sonar",
+          "description": "AI model to use for search"
         },
         "maxResults": {
           "type": "number",
           "minimum": 1,
           "maximum": 50,
           "default": 5,
-          "description": "Maximum results per query"
+          "description": "Maximum search results to return"
         },
-        "country": {
+        "file": {
           "type": "string",
-          "pattern": "^[A-Z]{2}$",
-          "description": "ISO country code for location-based search"
+          "description": "File path to attach and analyze"
         },
-        "concurrency": {
-          "type": "number",
-          "minimum": 1,
-          "maximum": 10,
-          "default": 3,
-          "description": "Concurrent query limit for multi-mode"
+        "image": {
+          "type": "string",
+          "description": "Image path to attach and analyze"
         },
         "timeout": {
           "type": "number",
@@ -47,42 +42,100 @@
           "maximum": 300000,
           "default": 30000,
           "description": "Request timeout in milliseconds"
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO country code for location-based search"
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2}$",
+          "description": "ISO language code for search results"
+        },
+        "domain": {
+          "type": "string",
+          "description": "Filter results to specific domain"
+        },
+        "recency": {
+          "type": "string",
+          "enum": ["hour", "day", "week", "month", "year"],
+          "description": "Filter results by recency"
+        },
+        "history": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable search history"
+        },
+        "export": {
+          "type": "string",
+          "enum": ["json", "markdown", "csv", "txt"],
+          "description": "Export format for results"
+        },
+        "output": {
+          "type": "string",
+          "description": "Output file path for exported results"
         }
       },
-      "required": ["mode"]
+      "required": ["query"]
     },
     "output": {
       "type": "object",
       "properties": {
         "success": { "type": "boolean" },
-        "results": {
+        "answer": {
+          "type": "string",
+          "description": "AI-generated answer to the query"
+        },
+        "sources": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "query": { "type": "string" },
-              "results": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "title": { "type": "string" },
-                    "url": { "type": "string", "format": "uri" },
-                    "snippet": { "type": "string" },
-                    "date": { "type": "string" }
-                  },
-                  "required": ["title", "url"]
-                }
-              }
+              "title": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "snippet": { "type": "string" },
+              "date": { "type": "string" },
+              "score": { "type": "number" }
+            },
+            "required": ["title", "url"]
+          },
+          "description": "List of sources used for the answer"
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "url": { "type": "string" },
+              "title": { "type": "string" }
             }
-          }
+          },
+          "description": "Related media content"
+        },
+        "related": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Related questions or queries"
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "tokens": { "type": "number" },
+            "credits": { "type": "number" },
+            "model": { "type": "string" },
+            "duration": { "type": "number" }
+          },
+          "description": "Usage statistics for the request"
         },
         "error": {
           "type": "object",
           "properties": {
             "code": { "type": "string" },
             "message": { "type": "string" },
-            "details": { "type": "object" }
+            "details": { "type": "object" },
+            "retryable": { "type": "boolean" }
           }
         }
       }
@@ -90,13 +143,53 @@
   },
   "environment": {
     "required": ["PERPLEXITY_API_KEY"],
-    "optional": ["PERPLEXITY_AI_API_KEY"]
+    "optional": [
+      "PPLX_CONFIG_DIR",
+      "PPLX_HISTORY_FILE",
+      "PPLX_LOG_LEVEL",
+      "PPLX_AUTO_UPDATE",
+      "PPLX_EXPORT_DIR",
+      "NO_COLOR",
+      "PERPLEXITY_AI_API_KEY"
+    ]
   },
   "capabilities": [
     "single-query-search",
-    "multi-query-search",
-    "concurrent-execution",
+    "multimodal-input",
+    "file-attachments",
+    "image-analysis",
+    "document-analysis",
+    "auto-update",
+    "search-history",
+    "result-export",
+    "multiple-models",
+    "streaming-output",
     "error-recovery",
-    "streaming-output"
-  ]
+    "retry-mechanism",
+    "config-management",
+    "cli-integration",
+    "colored-output",
+    "progress-indicators",
+    "cross-platform",
+    "offline-cache"
+  ],
+  "features": [
+    "Fast search with sub-1s response times",
+    "Support for file attachments (PDF, DOCX, TXT, etc.)",
+    "Image analysis and understanding",
+    "Multiple AI models (Sonar, Sonar Pro, Sonar Reasoning)",
+    "Automatic updates",
+    "Search history with persistent storage",
+    "Export results to multiple formats",
+    "Cross-platform support (Windows, macOS, Linux)",
+    "Zero-config setup",
+    "Resilient error handling with retries",
+    "Streaming responses",
+    "Colored output with progress indicators"
+  ],
+  "dependencies": {
+    "runtime": "bun >= 1.0.0",
+    "api": "Perplexity AI API",
+    "platform": ["win32", "darwin", "linux"]
+  }
 }

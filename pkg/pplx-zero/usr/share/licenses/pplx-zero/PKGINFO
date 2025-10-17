@@ -1,4 +1,0 @@
-pkgname=pplx-zero
-pkgver=1.1.4
-pkgdesc="Fast Perplexity AI search CLI with multimodal support - minimal setup, maximal results"
-url="https://github.com/codewithkenzo/pplx-zero"
