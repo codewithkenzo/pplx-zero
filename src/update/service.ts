@@ -211,10 +211,10 @@ async function getCurrentVersion(): Promise<string> {
     // Try to read version from package.json
     const packageJsonPath = join(process.cwd(), 'package.json');
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-    return packageJson.version || '1.1.7';
+    return packageJson.version || '1.1.8';
   } catch {
     // Fallback version
-    return '1.1.7';
+    return '1.1.8';
   }
 }
 

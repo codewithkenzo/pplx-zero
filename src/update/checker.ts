@@ -40,7 +40,7 @@ export class UpdateChecker {
       return await getVersion();
     } catch (error) {
       console.error('Failed to read current version:', error);
-      return '1.1.4'; // Use known version as fallback
+      return '1.1.8'; // Use known version as fallback
     }
   }
 

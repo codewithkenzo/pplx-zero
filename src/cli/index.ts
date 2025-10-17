@@ -21,7 +21,7 @@ const program = new Command();
 program
   .name('pplx')
   .description('Fast Perplexity AI search CLI with multi-search, history, and export')
-  .version('1.1.4', '-v, --version', 'Show version information')
+  .version('1.1.8', '-v, --version', 'Show version information')
   .helpOption('-h, --help', 'Show this help message');
 
 // Global options
@@ -37,8 +37,8 @@ program
   .option('--export <filename>', 'Export results to file')
   .option('-I, --input <file>', 'Read queries from JSON file')
   .option('-s, --stdin', 'Read queries from stdin (JSON format)')
-  .option('--attach <files...>', 'Additional file attachments (multiple allowed)')
-  .option('--attach-image <files...>', 'Additional image attachments (multiple allowed)')
+  .option('--attach <file>', 'Additional file attachment (can be used multiple times)')
+  .option('--attach-image <file>', 'Additional image attachment (can be used multiple times)')
   .option('--async', 'Enable async mode for advanced models')
   .option('--webhook <url>', 'Webhook URL for async results')
   .option('--workspace <path>', 'Workspace directory for file operations')
@@ -185,8 +185,61 @@ program.hook('preSubcommand', async (thisCommand) => {
   }
 });
 
+/**
+ * Parse command line arguments to collect multiple --attach options
+ * Commander.js doesn't natively support multiple values for the same option
+ */
+function parseAttachOptions(rawArgs: string[]): { attach: string[]; attachImage: string[]; remainingArgs: string[] } {
+  const attach: string[] = [];
+  const attachImage: string[] = [];
+  const remainingArgs: string[] = [];
+  let i = 0;
+
+  while (i < rawArgs.length) {
+    const arg = rawArgs[i];
+
+    if (arg === '--attach') {
+      if (i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith('-')) {
+        attach.push(rawArgs[i + 1]);
+        i += 2;
+      } else {
+        console.error('Error: --attach requires a file path');
+        process.exit(1);
+      }
+    } else if (arg === '--attach-image') {
+      if (i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith('-')) {
+        attachImage.push(rawArgs[i + 1]);
+        i += 2;
+      } else {
+        console.error('Error: --attach-image requires a file path');
+        process.exit(1);
+      }
+    } else {
+      remainingArgs.push(arg);
+      i += 1;
+    }
+  }
+
+  return { attach, attachImage, remainingArgs };
+}
+
+// Parse and extract attach options before Commander.js processes them
+const rawArgs = process.argv.slice(2);
+const { attach: attachFiles, attachImage: attachImages, remainingArgs } = parseAttachOptions(rawArgs);
+
+// Store attach options globally for later use
+let collectedAttach = attachFiles;
+let collectedAttachImages = attachImages;
+
+// Override process.argv temporarily for Commander.js parsing
+const originalArgv = process.argv;
+process.argv = ['node', originalArgv[1], ...remainingArgs];
+
 // Main action handler for search functionality
 program.action(async (queries: string[], options) => {
+  // Restore original argv
+  process.argv = originalArgv;
+
   const result = await handleSearchCommand({
     query: options.query,
     file: options.file,
@@ -200,8 +253,8 @@ program.action(async (queries: string[], options) => {
     useSearchAPI: options.useSearchApi,
     stdin: options.stdin,
     input: options.input,
-    attach: options.attach || [],
-    attachImage: options.attachImage || [],
+    attach: collectedAttach,
+    attachImage: collectedAttachImages,
     export: options.export,
     async: options.async,
     webhook: options.webhook,

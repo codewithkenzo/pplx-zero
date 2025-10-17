@@ -15,7 +15,7 @@ const __dirname = dirname(__filename);
  * Hardcoded version info - used as fallback when package.json is not accessible
  * This ensures the version command always works, especially in global installations
  */
-const FALLBACK_VERSION = '1.1.4';
+const FALLBACK_VERSION = '1.1.8';
 const FALLBACK_PACKAGE_INFO = {
   version: FALLBACK_VERSION,
   name: 'pplx-zero',

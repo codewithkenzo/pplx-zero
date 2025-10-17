@@ -29,7 +29,7 @@ export async function handleVersionCommand(options: {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     // Show fallback version even on error
-    const fallbackVersion = 'pplx-zero v1.1.4';
+    const fallbackVersion = 'pplx-zero v1.1.8';
     console.log(fallbackVersion);
 
     // Only show error if not a simple version lookup issue

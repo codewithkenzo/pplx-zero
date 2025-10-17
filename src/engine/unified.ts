@@ -394,6 +394,7 @@ export class UnifiedPerplexityEngine {
       temperature?: number;
       attachments?: FileAttachment[];
       webhook?: string;
+      timeout?: number;
     } = {}
   ): Promise<{
     content?: string;
@@ -407,7 +408,7 @@ export class UnifiedPerplexityEngine {
     const startTime = performance.now();
 
     try {
-      const { model, attachments, webhook } = options;
+      const { model, attachments, webhook, timeout } = options;
 
       // Advanced models (sonar-pro, sonar-deep-research, sonar-reasoning) use chat completions
       if (model === 'sonar-pro' || model === 'sonar-deep-research' || model === 'sonar-reasoning') {
@@ -467,6 +468,11 @@ export class UnifiedPerplexityEngine {
           ];
         }
 
+        // Deep research model needs significantly more time (3-5 minutes)
+        const effectiveTimeout = model === 'sonar-deep-research'
+          ? Math.max(timeout || 300000, 300000) // Minimum 5 minutes for deep research
+          : timeout || this.config.timeout;
+
         const response = await this.executeWithTimeout(
           this.client.chat.completions.create({
             model,
@@ -474,7 +480,7 @@ export class UnifiedPerplexityEngine {
             max_tokens: options.maxTokens || 4000,
             temperature: options.temperature || 0.1,
           }),
-          this.config.timeout
+          effectiveTimeout
         );
 
         // Properly extract content from chat completion response

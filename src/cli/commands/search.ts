@@ -104,7 +104,13 @@ async function parseQueries(options: {
     metadata = { lineCount };
   } else if (options.input) {
     source = 'file';
-    const fileContent = await Bun.file(options.input).text();
+    let fileContent: string;
+    if (typeof Bun !== 'undefined') {
+      fileContent = await Bun.file(options.input).text();
+    } else {
+      const fs = await import('node:fs');
+      fileContent = await fs.promises.readFile(options.input, 'utf-8');
+    }
     const parsed = JSON.parse(fileContent);
 
     if (parsed.queries && Array.isArray(parsed.queries)) {
@@ -156,6 +162,7 @@ async function executeSearch(
           model: options.model,
           attachments,
           webhook: options.webhook,
+          timeout: options.timeout,
         });
 
         result = {
@@ -508,12 +515,66 @@ export async function handleSearchCommand(options: {
       positionals: options.positionals,
     });
 
-    // Collect file paths
+    // Collect and validate file paths
     const filePaths: string[] = [];
-    if (options.file) filePaths.push(options.file);
-    if (options.image) filePaths.push(options.image);
-    if (options.attach) filePaths.push(...options.attach);
-    if (options.attachImage) filePaths.push(...options.attachImage);
+    const filesToValidate: string[] = [];
+
+    if (options.file) {
+      filePaths.push(options.file);
+      filesToValidate.push(options.file);
+    }
+    if (options.image) {
+      filePaths.push(options.image);
+      filesToValidate.push(options.image);
+    }
+    if (options.attach) {
+      filePaths.push(...options.attach);
+      filesToValidate.push(...options.attach);
+    }
+    if (options.attachImage) {
+      filePaths.push(...options.attachImage);
+      filesToValidate.push(...options.attachImage);
+    }
+
+    // Validate that all files exist and are readable
+    if (filesToValidate.length > 0) {
+      const missingFiles: string[] = [];
+
+      for (const filePath of filesToValidate) {
+        try {
+          // Use Bun if available, otherwise fallback to Node.js fs
+          if (typeof Bun !== 'undefined') {
+            const file = Bun.file(filePath);
+            if (!(await file.exists())) {
+              missingFiles.push(filePath);
+            } else if (file.size === 0) {
+              throw new Error(`File is empty: ${filePath}`);
+            }
+          } else {
+            // Node.js fallback
+            const fs = await import('node:fs');
+            const stats = await fs.promises.stat(filePath);
+            if (!stats.isFile()) {
+              missingFiles.push(filePath);
+            } else if (stats.size === 0) {
+              throw new Error(`File is empty: ${filePath}`);
+            }
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('File is empty')) {
+            throw error;
+          }
+          missingFiles.push(filePath);
+        }
+      }
+
+      if (missingFiles.length > 0) {
+        const fileList = missingFiles.length === 1
+          ? `File "${missingFiles[0]}" does not exist or is not readable`
+          : `Files do not exist or are not readable:\n${missingFiles.map(f => `  - ${f}`).join('\n')}`;
+        throw new Error(`${fileList}\nPlease check the file paths and try again.`);
+      }
+    }
 
     // Create search options
     const searchOptions: SearchOptions = {
