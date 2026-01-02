@@ -1,0 +1,21 @@
+import { test, expect, describe } from 'bun:test';
+import { MODELS, type Model } from './api';
+
+describe('MODELS', () => {
+  test('includes all expected models', () => {
+    expect(MODELS).toContain('sonar');
+    expect(MODELS).toContain('sonar-pro');
+    expect(MODELS).toContain('sonar-reasoning');
+    expect(MODELS).toContain('sonar-reasoning-pro');
+    expect(MODELS).toContain('sonar-deep-research');
+  });
+
+  test('has exactly 5 models', () => {
+    expect(MODELS).toHaveLength(5);
+  });
+
+  test('Model type matches MODELS array', () => {
+    const model: Model = MODELS[0]!;
+    expect(MODELS.includes(model)).toBe(true);
+  });
+});

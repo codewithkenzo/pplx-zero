@@ -3,7 +3,8 @@ import type { FileAttachment } from './files';
 
 const API_URL = 'https://api.perplexity.ai/chat/completions';
 
-export type Model = 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
+export const MODELS = ['sonar', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro', 'sonar-deep-research'] as const;
+export type Model = (typeof MODELS)[number];
 
 export interface SearchResult {
   title: string;
