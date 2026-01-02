@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
-const { spawn, execSync } = require('child_process');
-const { join } = require('path');
+import { spawn, execSync } from 'child_process';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const hasBun = () => {
   try {
