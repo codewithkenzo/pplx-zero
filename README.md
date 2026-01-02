@@ -14,9 +14,10 @@ pplx "what is bun"
 ## Why pplx-zero?
 
 - **Fast** — Bun-native, streams responses as they arrive
-- **Minimal** — ~300 lines of code, one dependency (zod)
+- **Minimal** — ~400 lines of code, one dependency (zod)
 - **Powerful** — 5 models including deep research, file & image support
-- **Unix-friendly** — Pipes, JSON output, exit codes done right
+- **Conversational** — Continue previous queries with `-c`
+- **Unix-friendly** — Pipes, JSON output, history, exit codes done right
 
 ## Installation
 
@@ -57,11 +58,22 @@ pplx -f report.pdf "summarize the key findings"
 # Describe an image
 pplx -i screenshot.png "what's happening in this image"
 
+# Continue a conversation
+pplx "what is rust"
+pplx -c "how does it compare to go?"
+pplx -c "which should I learn first?"
+
+# Save research to markdown
+pplx -m sonar-deep-research "AI trends 2025" -o research.md
+
 # Get JSON output for scripting
 pplx --json "capital of france" | jq .answer
 
-# Pipe-friendly
-echo "explain this error" | pplx
+# View query history
+pplx --history
+
+# Search without saving to history
+pplx --no-history "sensitive query"
 ```
 
 ## Models
@@ -81,8 +93,32 @@ echo "explain this error" | pplx
 | `-m, --model <name>` | Select model |
 | `-f, --file <path>` | Attach document (PDF, TXT, MD, etc.) |
 | `-i, --image <path>` | Attach image (PNG, JPG, WebP, etc.) |
+| `-o, --output <path>` | Save output to file (.md, .txt) |
+| `-c, --continue` | Continue from last query |
+| `--history` | Show query history |
+| `--no-history` | Don't save query to history |
 | `--json` | Output as JSON |
 | `-h, --help` | Show help |
+
+## History & Sessions
+
+pplx-zero keeps a local history of your queries at `~/.pplx/history.jsonl`.
+
+```bash
+# View recent queries
+pplx --history
+
+# Filter with grep
+pplx --history | grep "typescript"
+
+# Continue last conversation
+pplx -c "tell me more"
+
+# Skip history for sensitive queries
+pplx --no-history "private question"
+```
+
+History auto-rotates at 1000 entries to keep the file small.
 
 ## Exit Codes
 

@@ -17,6 +17,13 @@ export const fmt = {
   stats: (tokens: number, ms: number) => 
     `\n${c.gray}[${tokens} tokens, ${(ms / 1000).toFixed(1)}s]${c.reset}\n`,
   sources: () => `\n${c.yellow}Sources:${c.reset}`,
+  historyEntry: (ts: number, model: string, query: string) => {
+    const date = new Date(ts).toLocaleString('en-US', { 
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+    });
+    return `${c.dim}${date}${c.reset} ${c.cyan}[${model}]${c.reset} ${query}`;
+  },
+  continuing: (query: string) => `${c.dim}Continuing from:${c.reset} ${query.slice(0, 50)}${query.length > 50 ? '...' : ''}\n`,
 };
 
 export async function write(text: string): Promise<void> {
