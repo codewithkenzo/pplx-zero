@@ -2,7 +2,10 @@
 import { parseArgs } from 'node:util';
 import { search, MODELS, type Model } from './api';
 import { encodeFile } from './files';
+import { getEnv } from './env';
 import { fmt, write, writeLn } from './output';
+
+getEnv();
 
 
 const { values, positionals } = parseArgs({
