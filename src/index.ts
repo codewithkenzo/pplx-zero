@@ -5,6 +5,7 @@ import { encodeFile } from './files';
 import { getEnv } from './env';
 import { fmt, write, writeLn } from './output';
 import { appendHistory, readHistory, getLastEntry } from './history';
+import { renderMarkdown, createMarkdownState } from './markdown';
 
 getEnv();
 
@@ -20,6 +21,7 @@ const { values, positionals } = parseArgs({
     'no-history': { type: 'boolean', default: false },
     continue: { type: 'boolean', short: 'c', default: false },
     output: { type: 'string', short: 'o' },
+    raw: { type: 'boolean', default: false },
   },
   allowPositionals: true,
   strict: true,
@@ -39,6 +41,7 @@ Options:
   -c, --continue       Continue from last query (add context)
   --history            Show query history
   --no-history         Don't save this query to history
+  --raw                Raw output (no markdown rendering)
   --json               Output as JSON
   -h, --help           Show this help
 
@@ -91,7 +94,7 @@ const file = filePath ? await encodeFile(filePath) : undefined;
 
 const startTime = Date.now();
 let fullContent = '';
-let outputBuffer = '';
+const mdState = createMarkdownState();
 
 if (!values.json) {
   await write(fmt.model(model) + ' ');
@@ -102,7 +105,8 @@ await search(query, model, {
   onContent: async (text) => {
     fullContent += text;
     if (!values.json) {
-      await write(text);
+      const out = values.raw ? text : renderMarkdown(text, mdState);
+      await write(out);
     }
   },
   onDone: async (citations, usage) => {
