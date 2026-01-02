@@ -25,7 +25,8 @@
   },
   "files": [
     "src",
-    "bin"
+    "bin",
+    "!src/**/*.test.ts"
   ],
   "repository": {
     "type": "git",

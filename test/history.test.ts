@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterAll } from 'bun:test';
-import { appendHistory, readHistory, getLastEntry, clearHistory } from './history';
+import { appendHistory, readHistory, getLastEntry, clearHistory } from '../src/history';
 
 beforeEach(async () => {
   await clearHistory();

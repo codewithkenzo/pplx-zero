@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test';
-import { encodeFile, toDataUrl, type FileAttachment } from './files';
+import { encodeFile, toDataUrl, type FileAttachment } from '../src/files';
 import { writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 

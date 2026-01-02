@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test';
-import { MODELS, type Model } from './api';
+import { MODELS, type Model } from '../src/api';
 
 describe('MODELS', () => {
   test('includes all expected models', () => {

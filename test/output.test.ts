@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test';
-import { fmt } from './output';
+import { fmt } from '../src/output';
 
 describe('fmt', () => {
   test('model formats with cyan color', () => {
