@@ -1,10 +1,9 @@
 #!/usr/bin/env bun
 import { parseArgs } from 'node:util';
-import { search, type Model } from './api';
+import { search, MODELS, type Model } from './api';
 import { encodeFile } from './files';
 import { fmt, write, writeLn } from './output';
 
-const MODELS: Model[] = ['sonar', 'sonar-pro', 'sonar-reasoning', 'sonar-reasoning-pro'];
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -26,7 +25,7 @@ pplx - Perplexity AI search from terminal
 Usage: pplx [options] <query>
 
 Options:
-  -m, --model <name>   Model: sonar, sonar-pro, sonar-reasoning, sonar-reasoning-pro (default: sonar)
+  -m, --model <name>   Model: ${MODELS.join(', ')} (default: sonar)
   -f, --file <path>    Attach a file (PDF, TXT, etc.)
   -i, --image <path>   Attach an image (PNG, JPG, etc.)
   --json               Output as JSON
