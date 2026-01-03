@@ -19,9 +19,10 @@ export interface StreamCallbacks {
 }
 
 interface MessageContent {
-  type: 'text' | 'file_url';
+  type: 'text' | 'file_url' | 'image_url';
   text?: string;
   file_url?: { url: string };
+  image_url?: { url: string };
   file_name?: string;
 }
 
@@ -32,12 +33,22 @@ function buildMessages(query: string, file?: FileAttachment): { role: string; co
 
   const content: MessageContent[] = [
     { type: 'text', text: query },
-    {
+  ];
+
+  if (file.type === 'image') {
+    // Images: use image_url with data URL prefix per Perplexity API spec
+    content.push({
+      type: 'image_url',
+      image_url: { url: `data:${file.mimeType};base64,${file.data}` },
+    });
+  } else {
+    // Documents: use file_url with raw base64
+    content.push({
       type: 'file_url',
       file_url: { url: file.data },
       file_name: file.filename,
-    },
-  ];
+    });
+  }
 
   return [{ role: 'user', content }];
 }

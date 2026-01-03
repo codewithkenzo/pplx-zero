@@ -53,6 +53,21 @@ describe('encodeFile', () => {
     
     await unlink(testPath);
   });
+
+  test('rejects path traversal attempts', async () => {
+    await expect(encodeFile('../../../etc/passwd')).rejects.toThrow('Path traversal not allowed');
+    await expect(encodeFile('/tmp/../etc/passwd')).rejects.toThrow('Path traversal not allowed');
+  });
+
+  test('rejects files larger than 50MB', async () => {
+    const testPath = join(TMP_DIR, 'large-test.txt');
+    const largeContent = Buffer.alloc(51 * 1024 * 1024);
+    await writeFile(testPath, largeContent);
+    
+    await expect(encodeFile(testPath)).rejects.toThrow(/File too large/);
+    
+    await unlink(testPath);
+  });
 });
 
 describe('toDataUrl', () => {

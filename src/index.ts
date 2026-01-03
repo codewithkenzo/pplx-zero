@@ -72,8 +72,14 @@ if (positionals.length === 0 && !values.continue) {
   process.exit(2);
 }
 
+// Validate model before proceeding
+if (!MODELS.includes(values.model as Model)) {
+  console.error(fmt.error(`Invalid model: ${values.model}. Available: ${MODELS.join(', ')}`));
+  process.exit(2);
+}
+const model = values.model as Model;
+
 let query = positionals.join(' ');
-const model = (MODELS.includes(values.model as Model) ? values.model : 'sonar') as Model;
 
 if (values.continue) {
   const last = await getLastEntry();
@@ -91,6 +97,12 @@ if (values.continue) {
 
 const filePath = values.file || values.image;
 const file = filePath ? await encodeFile(filePath) : undefined;
+
+// Validate model supports image input
+if (file?.type === 'image' && model === 'sonar-deep-research') {
+  console.error(fmt.error('sonar-deep-research does not support image input. Use sonar or sonar-pro.'));
+  process.exit(2);
+}
 
 const startTime = Date.now();
 let fullContent = '';

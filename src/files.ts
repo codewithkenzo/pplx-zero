@@ -1,5 +1,7 @@
-import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, basename, resolve } from 'node:path';
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB - Perplexity API limit
 
 const MIME_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
@@ -20,14 +22,26 @@ export interface FileAttachment {
 }
 
 export async function encodeFile(path: string): Promise<FileAttachment> {
-  const ext = extname(path).toLowerCase();
+  // Security: prevent path traversal
+  if (path.includes('..')) {
+    throw new Error('Path traversal not allowed');
+  }
+  
+  const resolved = resolve(path);
+  const ext = extname(resolved).toLowerCase();
   const mimeType = MIME_TYPES[ext];
   
   if (!mimeType) {
     throw new Error(`Unsupported file type: ${ext}`);
   }
 
-  const buffer = await readFile(path);
+  // Security: check file size before reading into memory
+  const stats = await stat(resolved);
+  if (stats.size > MAX_FILE_SIZE) {
+    throw new Error(`File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB (max 50MB)`);
+  }
+
+  const buffer = await readFile(resolved);
   const data = buffer.toString('base64');
   const isImage = mimeType.startsWith('image/');
 
@@ -35,7 +49,7 @@ export async function encodeFile(path: string): Promise<FileAttachment> {
     type: isImage ? 'image' : 'file',
     data,
     mimeType,
-    filename: path.split('/').pop() || 'file',
+    filename: basename(resolved),
   };
 }
 
