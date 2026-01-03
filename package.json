@@ -1,7 +1,7 @@
 {
   "name": "pplx-zero",
   "version": "2.2.2",
-  "description": "Minimal Perplexity AI CLI - search from terminal",
+  "description": "Fast, minimal Perplexity AI CLI. Stream answers, analyze PDFs/images, continue conversations. Zero bloat.",
   "author": "kenzo",
   "license": "MIT",
   "type": "module",
@@ -42,6 +42,15 @@
     "search",
     "cli",
     "terminal",
-    "bun"
+    "bun",
+    "llm",
+    "chatgpt",
+    "api",
+    "streaming",
+    "pdf",
+    "image",
+    "multimodal",
+    "research",
+    "assistant"
   ]
 }
