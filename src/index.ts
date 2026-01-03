@@ -96,7 +96,19 @@ if (values.continue) {
 }
 
 const filePath = values.file || values.image;
-const file = filePath ? await encodeFile(filePath) : undefined;
+let file;
+if (filePath) {
+  try {
+    file = await encodeFile(filePath);
+  } catch (err) {
+    let msg = err instanceof Error ? err.message : 'Unknown error reading file';
+    if (msg.includes('ENOENT')) {
+      msg = `File not found: ${filePath}`;
+    }
+    console.error(fmt.error(msg));
+    process.exit(2);
+  }
+}
 
 // Validate model supports image input
 if (file?.type === 'image' && model === 'sonar-deep-research') {

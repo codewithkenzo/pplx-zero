@@ -5,13 +5,16 @@ describe('MODELS', () => {
   test('includes all expected models', () => {
     expect(MODELS).toContain('sonar');
     expect(MODELS).toContain('sonar-pro');
-    expect(MODELS).toContain('sonar-reasoning');
     expect(MODELS).toContain('sonar-reasoning-pro');
     expect(MODELS).toContain('sonar-deep-research');
   });
 
-  test('has exactly 5 models', () => {
-    expect(MODELS).toHaveLength(5);
+  test('has exactly 4 models', () => {
+    expect(MODELS).toHaveLength(4);
+  });
+
+  test('does not include deprecated sonar-reasoning', () => {
+    expect(MODELS).not.toContain('sonar-reasoning');
   });
 
   test('Model type matches MODELS array', () => {
