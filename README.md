@@ -86,7 +86,6 @@ pplx --history
 |-------|-----|
 | `sonar` | Quick answers |
 | `sonar-pro` | Complex questions |
-| `sonar-reasoning` | Step-by-step |
 | `sonar-reasoning-pro` | Advanced reasoning |
 | `sonar-deep-research` | Research reports |
 
