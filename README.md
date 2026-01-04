@@ -104,7 +104,7 @@ pplx --history
 
 ## Philosophy
 
-~400 lines. 1 dependency. No frameworks.
+Minimal. 1 dependency. No frameworks.
 
 ---
 
