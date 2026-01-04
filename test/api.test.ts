@@ -72,6 +72,7 @@ describe('search parser', () => {
     expect(onContent).toHaveBeenCalledWith('Valid');
     expect(onContent).toHaveBeenCalledWith(' Part');
     expect(onDone).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalled();
   });
 
@@ -96,6 +97,8 @@ describe('search parser', () => {
     await search('query', 'sonar', { onContent, onDone, onError });
 
     expect(onContent).toHaveBeenCalledWith('text');
+    expect(onDone).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalled();
     const errorCalls = (console.error as any).mock.calls;
     expect(errorCalls.some((call: any) => call[0].includes('Unexpected SSE line'))).toBe(true);
@@ -124,6 +127,7 @@ describe('search parser', () => {
     expect(onContent).toHaveBeenCalledWith('start');
     expect(onContent).toHaveBeenCalledWith('end');
     expect(onDone).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   test('search extracts citations and usage from stream', async () => {
@@ -148,5 +152,48 @@ describe('search parser', () => {
     await search('query', 'sonar', { onContent, onDone, onError });
 
     expect(onDone).toHaveBeenCalledWith(results, usage);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  test('search handles JSON split across chunks (buffer logic)', async () => {
+    const streamChunks = [
+      'data: {"choices":[{"delta":',
+      '{"content":"Hello"}}]}\n',
+    ];
+
+    const onContent = mock(() => {});
+    const onDone = mock(() => {});
+    const onError = mock(() => {});
+
+    // @ts-expect-error - mock fetch for testing
+    global.fetch = mock(async () => ({
+      ok: true,
+      body: createMockStream(streamChunks),
+    }));
+
+    await search('query', 'sonar', { onContent, onDone, onError });
+
+    expect(onContent).toHaveBeenCalledWith('Hello');
+    expect(onError).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalled();
+  });
+
+  test('search calls onError on HTTP failure', async () => {
+    // @ts-expect-error - mock fetch for testing
+    global.fetch = mock(async () => ({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    }));
+
+    const onContent = mock(() => {});
+    const onDone = mock(() => {});
+    const onError = mock(() => {});
+
+    await search('query', 'sonar', { onContent, onDone, onError });
+
+    expect(onError).toHaveBeenCalled();
+    expect(onContent).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
   });
 });

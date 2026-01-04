@@ -32,17 +32,6 @@ ${c.dim}Get one at: https://www.perplexity.ai/settings/api${c.reset}
     process.exit(1);
   }
 
-  if (!apiKey.startsWith('pplx-')) {
-    console.error(`
-${c.red}✗ Invalid API Key Format${c.reset}
-
-API keys must start with "pplx-"
-
-${c.dim}Get one at: https://www.perplexity.ai/settings/api${c.reset}
-`);
-    process.exit(1);
-  }
-
   _env = { PERPLEXITY_API_KEY: apiKey };
   return _env;
 }
