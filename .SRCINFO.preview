@@ -1,12 +1,12 @@
 pkgbase = pplx-zero
 	pkgdesc = Fast, minimal Perplexity AI CLI with local RAG. Stream answers, analyze PDFs/images, search your own notes.
-	pkgver = 2.3.0
+	pkgver = 2.4.0
 	pkgrel = 1
 	url = https://github.com/codewithkenzo/pplx-zero
 	arch = any
 	license = MIT
 	depends = bun
-	source = pplx-zero-2.3.0.tar.gz::https://github.com/codewithkenzo/pplx-zero/archive/refs/tags/v2.3.0.tar.gz
-	sha256sums = f31e7f3225c2f819b4bc7ae0904e7fdbadee21d0a60b24873ad45fc1dcbcac0f
+	source = pplx-zero-2.4.0.tar.gz::https://github.com/codewithkenzo/pplx-zero/archive/refs/tags/v2.4.0.tar.gz
+	sha256sums = 24cdb1b161e55ab2c8f8b57f6de61d63c8e96bdb75be26792199879ac463c304
 
 pkgname = pplx-zero
