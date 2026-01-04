@@ -1,6 +1,6 @@
 {
   "name": "pplx-zero",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "description": "Fast, minimal Perplexity AI CLI. Stream answers, analyze PDFs/images, continue conversations. Zero bloat.",
   "author": "kenzo",
   "license": "MIT",
