@@ -90,6 +90,8 @@ export async function search(
   let buffer = '';
   let citations: SearchResult[] = [];
   let usage = { prompt_tokens: 0, completion_tokens: 0 };
+  let parseErrors = 0;
+  let unexpectedLines = 0;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -100,7 +102,18 @@ export async function search(
     buffer = lines.pop() || '';
 
     for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
+      if (!line.trim()) continue;
+
+      if (!line.startsWith('data: ')) {
+        if (!line.startsWith(':')) {
+          unexpectedLines++;
+          if (unexpectedLines <= 3) {
+            console.error(`[pplx] Unexpected SSE line: ${line.slice(0, 100)}${line.length > 100 ? '...' : ''}`);
+          }
+        }
+        continue;
+      }
+
       const data = line.slice(6).trim();
       if (data === '[DONE]') continue;
 
@@ -118,9 +131,17 @@ export async function search(
           usage = parsed.usage;
         }
       } catch {
+        parseErrors++;
+        if (parseErrors <= 3) {
+          console.error(`[pplx] Failed to parse JSON: ${data.slice(0, 100)}${data.length > 100 ? '...' : ''}`);
+        }
         continue;
       }
     }
+  }
+
+  if (parseErrors > 0 || unexpectedLines > 0) {
+    console.error(`[pplx] Stream completed with ${parseErrors} parse errors, ${unexpectedLines} unexpected lines`);
   }
 
   callbacks.onDone(citations, usage);

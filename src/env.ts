@@ -17,9 +17,9 @@ let _env: z.infer<typeof envSchema> | null = null;
 export function getEnv() {
   if (_env) return _env;
 
-  const key = process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY;
-  
-  if (!key) {
+  const apiKey = process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY;
+
+  if (!apiKey) {
     console.error(`
 ${c.red}✗ Missing API Key${c.reset}
 
@@ -27,11 +27,11 @@ Set your Perplexity API key:
 
   ${c.cyan}export PERPLEXITY_API_KEY="pplx-..."${c.reset}
 
-${c.dim}Get one at: https://perplexity.ai/settings/api${c.reset}
+${c.dim}Get one at: https://www.perplexity.ai/settings/api${c.reset}
 `);
-    process.exit(2);
+    process.exit(1);
   }
 
-  _env = { PERPLEXITY_API_KEY: key };
+  _env = { PERPLEXITY_API_KEY: apiKey };
   return _env;
 }

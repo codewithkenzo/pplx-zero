@@ -8,7 +8,7 @@ url="https://github.com/codewithkenzo/pplx-zero"
 license=('MIT')
 depends=('bun')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/codewithkenzo/pplx-zero/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('dd334767258644256cf9979f175e53dce7d19e1a76015b62997dbfa3608a108c')
+sha256sums=('722344ffb235dc1ba8e19a8396f3f502e85280791890d2f027d0d1f65cfc7eff')
 
 build() {
   cd "$pkgname-$pkgver"
