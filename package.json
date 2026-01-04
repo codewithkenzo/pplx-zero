@@ -1,6 +1,6 @@
 {
   "name": "pplx-zero",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Fast, minimal Perplexity AI CLI with local RAG. Stream answers, search your notes, analyze files. Zero bloat.",
   "author": "kenzo",
   "license": "MIT",
