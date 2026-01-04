@@ -1,14 +1,14 @@
 # Maintainer: Kenzo <https://github.com/codewithkenzo>
 pkgname=pplx-zero
-pkgver=2.2.2
+pkgver=2.3.0
 pkgrel=1
-pkgdesc="Fast, minimal Perplexity AI CLI. Stream answers, analyze PDFs/images, continue conversations."
+pkgdesc="Fast, minimal Perplexity AI CLI with local RAG. Stream answers, analyze PDFs/images, search your own notes."
 arch=('any')
 url="https://github.com/codewithkenzo/pplx-zero"
 license=('MIT')
 depends=('bun')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/codewithkenzo/pplx-zero/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('722344ffb235dc1ba8e19a8396f3f502e85280791890d2f027d0d1f65cfc7eff')
+sha256sums=('f31e7f3225c2f819b4bc7ae0904e7fdbadee21d0a60b24873ad45fc1dcbcac0f')
 
 build() {
   cd "$pkgname-$pkgver"
