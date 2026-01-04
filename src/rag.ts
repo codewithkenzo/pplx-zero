@@ -136,7 +136,14 @@ const SUPPORTED_EXTS = new Set(['.md', '.txt']);
 
 async function copyToKnowledge(filePath: string): Promise<string> {
   await ensureKnowledgeDir();
-  const dest = join(KNOWLEDGE_DIR, basename(filePath));
+  const ext = extname(filePath);
+  const name = basename(filePath, ext);
+  let dest = join(KNOWLEDGE_DIR, basename(filePath));
+  let counter = 1;
+  while (await Bun.file(dest).exists()) {
+    dest = join(KNOWLEDGE_DIR, `${name}_${counter}${ext}`);
+    counter++;
+  }
   await copyFile(filePath, dest);
   return dest;
 }
@@ -150,7 +157,7 @@ export async function ingestPath(target: string): Promise<IngestStats> {
   
   if (isGlob) {
     const glob = new Glob(target);
-    for await (const file of glob.scan({ absolute: true })) {
+    for await (const file of glob.scan({ cwd: process.cwd(), absolute: true })) {
       const ext = extname(file).toLowerCase();
       if (!SUPPORTED_EXTS.has(ext)) {
         console.log(`Skipping unsupported: ${file} (only .md, .txt)`);
@@ -174,7 +181,14 @@ export async function ingestPath(target: string): Promise<IngestStats> {
   
   if (info.isDirectory()) {
     console.log(`Indexing directory: ${resolved}`);
-    return ingestDirectory(resolved);
+    const glob = new Glob('**/*.{md,txt}');
+    for await (const file of glob.scan({ cwd: resolved, absolute: true })) {
+      const dest = await copyToKnowledge(file);
+      const result = await ingestFile(dest);
+      stats[result]++;
+      console.log(`${result}: ${basename(file)}`);
+    }
+    return stats;
   }
   
   const ext = extname(resolved).toLowerCase();
