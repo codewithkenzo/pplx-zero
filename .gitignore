@@ -43,7 +43,5 @@ assets/
 *.local.md
 .claude/
 docs/dev/
-.gitignore
 secrets.env
 session-*.md
-.opencode/
