@@ -103,6 +103,12 @@ export async function ingestDirectory(dir?: string): Promise<IngestStats> {
 export function search(query: string, limit = 5): SearchResult[] {
   const db = getDb();
   
+  const ftsQuery = query
+    .trim()
+    .split(/\s+/)
+    .map(word => `${word}*`)
+    .join(' OR ');
+  
   const stmt = db.prepare(`
     SELECT 
       path,
@@ -116,7 +122,7 @@ export function search(query: string, limit = 5): SearchResult[] {
   `);
   
   try {
-    return stmt.all(query, limit) as SearchResult[];
+    return stmt.all(ftsQuery, limit) as SearchResult[];
   } catch {
     return [];
   }
