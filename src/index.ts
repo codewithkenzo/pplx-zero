@@ -146,7 +146,9 @@ if (ragContext) {
 if (values.continue) {
   const last = await getLastEntry();
   if (last) {
-    const context = `Previous question: "${last.q}"\nPrevious answer: "${last.a.slice(0, 500)}..."\n\nFollow-up question: ${query || 'Continue and elaborate on the previous answer.'}`;
+    const userQuery = positionals.join(' ') || 'Continue and elaborate on the previous answer.';
+    const historyContext = `Previous question: "${last.q}"\nPrevious answer: "${last.a.slice(0, 500)}..."\n\nFollow-up question: ${userQuery}`;
+    const context = ragContext ? ragContext + historyContext : historyContext;
     query = context;
     if (!values.json) {
       await write(fmt.continuing(last.q));
