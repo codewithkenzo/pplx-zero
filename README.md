@@ -32,6 +32,7 @@ Query [Perplexity AI](https://perplexity.ai) directly from your terminal. Respon
 - **📝 Export** — Save research to markdown
 - **🎨 Pretty** — Rendered markdown by default
 - **🕐 History** — Browse and search past queries
+- **🧠 Local RAG** — Index your own notes with `--ingest`
 
 ## Install
 
@@ -78,6 +79,11 @@ pplx --raw "explain monads"
 
 # history
 pplx --history
+
+# local knowledge base
+pplx --ingest notes.md           # index a file
+pplx --ingest ./docs/             # index a directory
+pplx -l "my notes on rust"        # search local knowledge
 ```
 
 ## Models
@@ -98,6 +104,8 @@ pplx --history
 | `-i` | Attach image |
 | `-o` | Output to file |
 | `-c` | Continue conversation |
+| `-l` | Search local knowledge |
+| `--ingest` | Index files to local knowledge |
 | `--raw` | Raw output (no markdown) |
 | `--history` | View history |
 | `--json` | JSON output |
