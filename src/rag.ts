@@ -128,6 +128,61 @@ export function search(query: string, limit = 5): SearchResult[] {
   }
 }
 
+export interface RagContext {
+  title: string;
+  content: string;
+}
+
+function truncateUtf8Safe(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  let truncated = str.slice(0, maxLen);
+  const lastChar = truncated.charCodeAt(truncated.length - 1);
+  if (lastChar >= 0xD800 && lastChar <= 0xDBFF) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated;
+}
+
+export function searchForRag(query: string, limit = 3, maxChars = 4000): RagContext[] {
+  const db = getDb();
+  
+  const ftsQuery = query
+    .trim()
+    .split(/\s+/)
+    .map(word => `${word}*`)
+    .join(' OR ');
+  
+  const stmt = db.prepare(`
+    SELECT title, content
+    FROM docs_fts
+    WHERE docs_fts MATCH ?
+    ORDER BY bm25(docs_fts)
+    LIMIT ?
+  `);
+  
+  try {
+    const results = stmt.all(ftsQuery, limit) as { title: string; content: string }[];
+    let totalChars = 0;
+    const truncated: RagContext[] = [];
+    
+    for (const r of results) {
+      const remaining = maxChars - totalChars;
+      if (remaining <= 0) break;
+      
+      const content = truncateUtf8Safe(r.content, remaining);
+      truncated.push({
+        title: r.title,
+        content,
+      });
+      totalChars += content.length;
+    }
+    
+    return truncated;
+  } catch {
+    return [];
+  }
+}
+
 export function getDocCount(): number {
   const db = getDb();
   const result = db.query('SELECT COUNT(*) as count FROM docs').get() as { count: number };

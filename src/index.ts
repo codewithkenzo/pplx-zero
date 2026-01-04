@@ -6,7 +6,7 @@ import { getEnv } from './env';
 import { fmt, write, writeLn } from './output';
 import { appendHistory, readHistory, getLastEntry } from './history';
 import { renderMarkdown, createMarkdownState } from './markdown';
-import { search as ragSearch, ingestDirectory, ingestFile, ingestPath, getDocCount, getKnowledgeDir } from './rag';
+import { search as ragSearch, searchForRag, ingestDirectory, ingestFile, ingestPath, getDocCount, getKnowledgeDir } from './rag';
 
 getEnv();
 
@@ -42,7 +42,7 @@ Options:
   -i, --image <path>   Attach an image (PNG, JPG, etc.)
   -o, --output <path>  Save output to file (.md, .txt)
   -c, --continue       Continue from last query (add context)
-  -l, --local          Search local knowledge base first
+  -l, --local          RAG: search local docs, inject as context
   --ingest [path]      Index file/dir/glob (default: ~/.pplx/knowledge/)
   --history            Show query history
   --no-history         Don't save this query to history
@@ -99,6 +99,8 @@ if (values.ingest) {
   process.exit(0);
 }
 
+let ragContext = '';
+
 if (values.local) {
   const query = positionals.join(' ');
   if (!query) {
@@ -106,26 +108,24 @@ if (values.local) {
     process.exit(2);
   }
   
-  const results = ragSearch(query);
+  const results = searchForRag(query);
   
   if (results.length === 0) {
-    console.log('No local documents match. Try --ingest first or check ~/.pplx/knowledge/');
-    process.exit(0);
+    console.log('No local documents match. Proceeding with Perplexity only...\n');
+  } else {
+    if (!values.json) {
+      console.log(`${fmt.model('local')} Found ${results.length} relevant doc(s), using as context...\n`);
+    }
+    
+    ragContext = 'Context from user\'s knowledge base:\n---\n';
+    for (const r of results) {
+      ragContext += `[${r.title}]:\n${r.content}\n\n`;
+    }
+    ragContext += '---\n\nQuestion: ';
   }
-  
-  console.log(`\n${fmt.model('local')} Found ${results.length} result(s):\n`);
-  
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i]!;
-    console.log(`[${i + 1}] ${r.title}`);
-    console.log(`    ${r.path}`);
-    console.log(`    ${r.snippet}\n`);
-  }
-  
-  process.exit(0);
 }
 
-if (positionals.length === 0 && !values.continue) {
+if (positionals.length === 0 && !values.continue && !values.local) {
   console.error(fmt.error('No query provided. Use -h for help.'));
   process.exit(2);
 }
@@ -138,6 +138,10 @@ if (!MODELS.includes(values.model as Model)) {
 const model = values.model as Model;
 
 let query = positionals.join(' ');
+
+if (ragContext) {
+  query = ragContext + query;
+}
 
 if (values.continue) {
   const last = await getLastEntry();

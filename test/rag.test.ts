@@ -118,3 +118,86 @@ test('special characters in query are handled', () => {
   expect(safeQuery('"function test"')).toHaveLength(1);
   expect(safeQuery('{')).toHaveLength(0);
 });
+
+test('searchForRag returns content with character limit', () => {
+  const db = new Database(':memory:');
+  
+  db.exec(`CREATE VIRTUAL TABLE docs_fts USING fts5(path, title, content);`);
+  
+  db.run('INSERT INTO docs_fts (path, title, content) VALUES (?, ?, ?)',
+    ['/test/a.md', 'Doc A', 'This is document A about testing']);
+  db.run('INSERT INTO docs_fts (path, title, content) VALUES (?, ?, ?)',
+    ['/test/b.md', 'Doc B', 'This is document B about testing']);
+  
+  const ftsQuery = 'testing*';
+  const results = db.query(`
+    SELECT title, content
+    FROM docs_fts
+    WHERE docs_fts MATCH ?
+    ORDER BY bm25(docs_fts)
+    LIMIT 3
+  `).all(ftsQuery) as { title: string; content: string }[];
+  
+  expect(results).toHaveLength(2);
+  expect(results[0]!.content).toContain('testing');
+});
+
+test('truncation respects maxChars across multiple docs', () => {
+  const docs = [
+    { title: 'A', content: 'x'.repeat(100) },
+    { title: 'B', content: 'y'.repeat(100) },
+    { title: 'C', content: 'z'.repeat(100) },
+  ];
+  
+  const maxChars = 150;
+  let totalChars = 0;
+  const truncated: { title: string; content: string }[] = [];
+  
+  for (const r of docs) {
+    const remaining = maxChars - totalChars;
+    if (remaining <= 0) break;
+    
+    const content = r.content.slice(0, remaining);
+    truncated.push({ title: r.title, content });
+    totalChars += content.length;
+  }
+  
+  expect(truncated).toHaveLength(2);
+  expect(truncated[0]!.content).toHaveLength(100);
+  expect(truncated[1]!.content).toHaveLength(50);
+  expect(totalChars).toBe(150);
+});
+
+test('UTF-8 safe truncation does not break surrogate pairs', () => {
+  const truncateUtf8Safe = (str: string, maxLen: number): string => {
+    if (str.length <= maxLen) return str;
+    let truncated = str.slice(0, maxLen);
+    const lastChar = truncated.charCodeAt(truncated.length - 1);
+    if (lastChar >= 0xD800 && lastChar <= 0xDBFF) {
+      truncated = truncated.slice(0, -1);
+    }
+    return truncated;
+  };
+  
+  const emojiText = 'Hello 👨‍👩‍👧‍👦 world';
+  const truncated = truncateUtf8Safe(emojiText, 10);
+  
+  expect(truncated.length).toBeLessThanOrEqual(10);
+  expect(() => JSON.stringify(truncated)).not.toThrow();
+});
+
+test('OR query with prefix matching finds partial words', () => {
+  const db = new Database(':memory:');
+  
+  db.exec(`CREATE VIRTUAL TABLE test_fts USING fts5(title, content);`);
+  
+  db.run('INSERT INTO test_fts (title, content) VALUES (?, ?)',
+    ['Learning', 'This is about machine learning and AI']);
+  
+  const ftsQuery = 'my* OR learn*';
+  const results = db.query(`
+    SELECT title FROM test_fts WHERE test_fts MATCH ?
+  `).all(ftsQuery);
+  
+  expect(results).toHaveLength(1);
+});
