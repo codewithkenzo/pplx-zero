@@ -61,10 +61,11 @@ describe('search parser', () => {
     const onError = mock(() => {});
     console.error = mock(() => {});
 
+    // @ts-expect-error - mock fetch for testing
     global.fetch = mock(async () => ({
       ok: true,
       body: createMockStream(streamChunks),
-    } as any));
+    }));
 
     await search('query', 'sonar', { onContent, onDone, onError });
 
@@ -86,10 +87,11 @@ describe('search parser', () => {
     const onError = mock(() => {});
     console.error = mock(() => {});
 
+    // @ts-expect-error - mock fetch for testing
     global.fetch = mock(async () => ({
       ok: true,
       body: createMockStream(streamChunks),
-    } as any));
+    }));
 
     await search('query', 'sonar', { onContent, onDone, onError });
 
@@ -111,10 +113,11 @@ describe('search parser', () => {
     const onError = mock(() => {});
     console.error = mock(() => {});
 
+    // @ts-expect-error - mock fetch for testing
     global.fetch = mock(async () => ({
       ok: true,
       body: createMockStream(streamChunks),
-    } as any));
+    }));
 
     await search('query', 'sonar', { onContent, onDone, onError });
 
@@ -136,10 +139,11 @@ describe('search parser', () => {
     const onDone = mock(() => {});
     const onError = mock(() => {});
 
+    // @ts-expect-error - mock fetch for testing
     global.fetch = mock(async () => ({
       ok: true,
       body: createMockStream(streamChunks),
-    } as any));
+    }));
 
     await search('query', 'sonar', { onContent, onDone, onError });
 

@@ -9,9 +9,7 @@ const c = {
 } as const;
 
 const envSchema = z.object({
-  PERPLEXITY_API_KEY: z.string()
-    .min(1, 'API key is required')
-    .startsWith('pplx-', 'API key should start with "pplx-"'),
+  PERPLEXITY_API_KEY: z.string().min(1),
 });
 
 let _env: z.infer<typeof envSchema> | null = null;
@@ -19,16 +17,11 @@ let _env: z.infer<typeof envSchema> | null = null;
 export function getEnv() {
   if (_env) return _env;
 
-  const result = envSchema.safeParse({
-    PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY,
-  });
+  const apiKey = process.env.PERPLEXITY_API_KEY || process.env.PERPLEXITY_AI_API_KEY;
 
-  if (!result.success) {
-    const issues = result.error.issues.map((i) => i.message).join(', ');
+  if (!apiKey) {
     console.error(`
-${c.red}✗ Invalid Environment${c.reset}
-
-${issues}
+${c.red}✗ Missing API Key${c.reset}
 
 Set your Perplexity API key:
 
@@ -39,6 +32,17 @@ ${c.dim}Get one at: https://www.perplexity.ai/settings/api${c.reset}
     process.exit(1);
   }
 
-  _env = result.data;
+  if (!apiKey.startsWith('pplx-')) {
+    console.error(`
+${c.red}✗ Invalid API Key Format${c.reset}
+
+API keys must start with "pplx-"
+
+${c.dim}Get one at: https://www.perplexity.ai/settings/api${c.reset}
+`);
+    process.exit(1);
+  }
+
+  _env = { PERPLEXITY_API_KEY: apiKey };
   return _env;
 }
