@@ -133,6 +133,16 @@ export interface RagContext {
   content: string;
 }
 
+function truncateUtf8Safe(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  let truncated = str.slice(0, maxLen);
+  const lastChar = truncated.charCodeAt(truncated.length - 1);
+  if (lastChar >= 0xD800 && lastChar <= 0xDBFF) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated;
+}
+
 export function searchForRag(query: string, limit = 3, maxChars = 4000): RagContext[] {
   const db = getDb();
   
@@ -159,11 +169,12 @@ export function searchForRag(query: string, limit = 3, maxChars = 4000): RagCont
       const remaining = maxChars - totalChars;
       if (remaining <= 0) break;
       
+      const content = truncateUtf8Safe(r.content, remaining);
       truncated.push({
         title: r.title,
-        content: r.content.slice(0, remaining),
+        content,
       });
-      totalChars += r.content.length;
+      totalChars += content.length;
     }
     
     return truncated;
