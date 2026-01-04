@@ -1,3 +1,6 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import type { Model } from './api';
 
 export interface HistoryEntry {
@@ -8,15 +11,15 @@ export interface HistoryEntry {
   citations?: string[];
 }
 
-const HISTORY_DIR = `${process.env.HOME}/.pplx`;
-const HISTORY_PATH = `${HISTORY_DIR}/history.jsonl`;
+const HISTORY_DIR = join(homedir(), '.pplx');
+const HISTORY_PATH = join(HISTORY_DIR, 'history.jsonl');
 const MAX_ENTRIES = 1000;
 const MAX_ANSWER_LENGTH = 2000;
 
 async function ensureDir(): Promise<void> {
   const dir = Bun.file(HISTORY_DIR);
   if (!(await dir.exists())) {
-    await Bun.$`mkdir -p ${HISTORY_DIR}`;
+    await mkdir(HISTORY_DIR, { recursive: true });
   }
 }
 
