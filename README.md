@@ -11,7 +11,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/pplx-zero"><img src="https://img.shields.io/npm/v/pplx-zero.svg?color=00d4ff" alt="npm"></a>
   <a href="https://aur.archlinux.org/packages/pplx-zero"><img src="https://img.shields.io/aur/version/pplx-zero?color=00d4ff" alt="AUR"></a>
-  <img src="https://img.shields.io/badge/bun-runtime-f9f1e1" alt="Bun">
+  <img src="https://img.shields.io/npm/dw/pplx-zero?color=00d4ff&label=downloads" alt="npm downloads">
+  <img src="https://img.shields.io/badge/bun-runtime-fbf0df?logo=bun" alt="Bun">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
 </p>
 
