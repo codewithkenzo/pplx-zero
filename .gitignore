@@ -37,6 +37,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Development/personal files (not for public repo)
 CLAUDE.md
 AGENTS.md
+**/AGENTS.md
 BLUEPRINT.md
 .opencode/
 assets/
