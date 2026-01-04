@@ -6,7 +6,7 @@ import { getEnv } from './env';
 import { fmt, write, writeLn } from './output';
 import { appendHistory, readHistory, getLastEntry } from './history';
 import { renderMarkdown, createMarkdownState } from './markdown';
-import { search as ragSearch, ingestDirectory, getDocCount, getKnowledgeDir } from './rag';
+import { search as ragSearch, ingestDirectory, ingestFile, ingestPath, getDocCount, getKnowledgeDir } from './rag';
 
 getEnv();
 
@@ -43,7 +43,7 @@ Options:
   -o, --output <path>  Save output to file (.md, .txt)
   -c, --continue       Continue from last query (add context)
   -l, --local          Search local knowledge base first
-  --ingest             Index files from ~/.pplx/knowledge/
+  --ingest [path]      Index file/dir/glob (default: ~/.pplx/knowledge/)
   --history            Show query history
   --no-history         Don't save this query to history
   --raw                Raw output (no markdown rendering)
@@ -75,10 +75,27 @@ if (values.history) {
 }
 
 if (values.ingest) {
-  console.log(`Indexing files from ${getKnowledgeDir()}...`);
-  const stats = await ingestDirectory();
-  console.log(`Done! Added: ${stats.added}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`);
-  console.log(`Total documents: ${getDocCount()}`);
+  const target = positionals[0];
+  
+  try {
+    if (target) {
+      const stats = await ingestPath(target);
+      if (stats.added + stats.updated + stats.skipped === 0) {
+        console.log(`No files found matching: ${target}`);
+      } else {
+        console.log(`Done! Added: ${stats.added}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`);
+      }
+    } else {
+      console.log(`Indexing files from ${getKnowledgeDir()}...`);
+      const stats = await ingestDirectory();
+      console.log(`Done! Added: ${stats.added}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`);
+    }
+    
+    console.log(`Total documents: ${getDocCount()}`);
+  } catch (err) {
+    console.error(fmt.error(err instanceof Error ? err.message : 'Ingest failed'));
+    process.exit(2);
+  }
   process.exit(0);
 }
 
