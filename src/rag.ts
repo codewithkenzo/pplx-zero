@@ -128,6 +128,50 @@ export function search(query: string, limit = 5): SearchResult[] {
   }
 }
 
+export interface RagContext {
+  title: string;
+  content: string;
+}
+
+export function searchForRag(query: string, limit = 3, maxChars = 4000): RagContext[] {
+  const db = getDb();
+  
+  const ftsQuery = query
+    .trim()
+    .split(/\s+/)
+    .map(word => `${word}*`)
+    .join(' OR ');
+  
+  const stmt = db.prepare(`
+    SELECT title, content
+    FROM docs_fts
+    WHERE docs_fts MATCH ?
+    ORDER BY bm25(docs_fts)
+    LIMIT ?
+  `);
+  
+  try {
+    const results = stmt.all(ftsQuery, limit) as { title: string; content: string }[];
+    let totalChars = 0;
+    const truncated: RagContext[] = [];
+    
+    for (const r of results) {
+      const remaining = maxChars - totalChars;
+      if (remaining <= 0) break;
+      
+      truncated.push({
+        title: r.title,
+        content: r.content.slice(0, remaining),
+      });
+      totalChars += r.content.length;
+    }
+    
+    return truncated;
+  } catch {
+    return [];
+  }
+}
+
 export function getDocCount(): number {
   const db = getDb();
   const result = db.query('SELECT COUNT(*) as count FROM docs').get() as { count: number };
