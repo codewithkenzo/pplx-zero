@@ -1,8 +1,8 @@
 import { Database } from 'bun:sqlite';
 import { Glob } from 'bun';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { join, basename, resolve, extname } from 'node:path';
+import { mkdir, stat, copyFile } from 'node:fs/promises';
 
 const PPLX_DIR = join(homedir(), '.pplx');
 const KNOWLEDGE_DIR = join(PPLX_DIR, 'knowledge');
@@ -130,4 +130,65 @@ export function getDocCount(): number {
 
 export function getKnowledgeDir(): string {
   return KNOWLEDGE_DIR;
+}
+
+const SUPPORTED_EXTS = new Set(['.md', '.txt']);
+
+async function copyToKnowledge(filePath: string): Promise<string> {
+  await ensureKnowledgeDir();
+  const dest = join(KNOWLEDGE_DIR, basename(filePath));
+  await copyFile(filePath, dest);
+  return dest;
+}
+
+export async function ingestPath(target: string): Promise<IngestStats> {
+  await ensureKnowledgeDir();
+  const stats: IngestStats = { added: 0, updated: 0, skipped: 0 };
+  const resolved = resolve(target);
+  
+  const isGlob = target.includes('*');
+  
+  if (isGlob) {
+    const glob = new Glob(target);
+    for await (const file of glob.scan({ absolute: true })) {
+      const ext = extname(file).toLowerCase();
+      if (!SUPPORTED_EXTS.has(ext)) {
+        console.log(`Skipping unsupported: ${file} (only .md, .txt)`);
+        stats.skipped++;
+        continue;
+      }
+      const dest = await copyToKnowledge(file);
+      const result = await ingestFile(dest);
+      stats[result]++;
+      console.log(`${result}: ${basename(file)}`);
+    }
+    return stats;
+  }
+  
+  let info;
+  try {
+    info = await stat(resolved);
+  } catch {
+    throw new Error(`Path not found: ${target}`);
+  }
+  
+  if (info.isDirectory()) {
+    console.log(`Indexing directory: ${resolved}`);
+    return ingestDirectory(resolved);
+  }
+  
+  const ext = extname(resolved).toLowerCase();
+  if (ext === '.pdf') {
+    throw new Error('PDF indexing not supported (requires text extraction library). Use -f to send PDFs to Perplexity API instead.');
+  }
+  if (!SUPPORTED_EXTS.has(ext)) {
+    throw new Error(`Unsupported file type: ${ext}. Supported: .md, .txt`);
+  }
+  
+  const dest = await copyToKnowledge(resolved);
+  const result = await ingestFile(dest);
+  stats[result]++;
+  console.log(`${result}: ${basename(resolved)} → ~/.pplx/knowledge/`);
+  
+  return stats;
 }
