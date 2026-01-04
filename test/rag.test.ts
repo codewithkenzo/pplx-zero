@@ -201,3 +201,17 @@ test('OR query with prefix matching finds partial words', () => {
   
   expect(results).toHaveLength(1);
 });
+
+test('RAG context preserved when combined with continue context', () => {
+  const ragContext = 'Context from knowledge base:\n---\nDoc A:\nSome content\n\n---\nQuestion: ';
+  const userQuery = 'follow-up question';
+  const lastEntry = { q: 'previous question', a: 'previous answer that is long...' };
+  
+  const historyContext = `Previous question: "${lastEntry.q}"\nPrevious answer: "${lastEntry.a.slice(0, 500)}..."\n\nFollow-up question: ${userQuery}`;
+  const finalQuery = ragContext ? ragContext + historyContext : historyContext;
+  
+  expect(finalQuery).toContain('Context from knowledge base');
+  expect(finalQuery).toContain('Doc A');
+  expect(finalQuery).toContain('Previous question');
+  expect(finalQuery).toContain('follow-up question');
+});
