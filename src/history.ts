@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, appendFile } from 'node:fs/promises';
 import type { Model } from './api';
 
 export interface HistoryEntry {
@@ -13,8 +13,11 @@ export interface HistoryEntry {
 
 const HISTORY_DIR = join(homedir(), '.pplx');
 const HISTORY_PATH = join(HISTORY_DIR, 'history.jsonl');
-const MAX_ENTRIES = 1000;
+const MAX_ENTRIES_TO_KEEP = 500;
+const ROTATION_SIZE_THRESHOLD = 512 * 1024; // 512KB
 const MAX_ANSWER_LENGTH = 2000;
+
+let appendCount = 0;
 
 async function ensureDir(): Promise<void> {
   const dir = Bun.file(HISTORY_DIR);
@@ -23,21 +26,27 @@ async function ensureDir(): Promise<void> {
   }
 }
 
+export async function maybeRotateHistory(): Promise<void> {
+  const file = Bun.file(HISTORY_PATH);
+  if (!(await file.exists()) || file.size < ROTATION_SIZE_THRESHOLD) return;
+
+  const text = await file.text();
+  const lines = text.trim().split('\n').filter(l => l.length > 0);
+
+  if (lines.length > MAX_ENTRIES_TO_KEEP) {
+    const keep = lines.slice(-MAX_ENTRIES_TO_KEEP).join('\n') + '\n';
+    await Bun.write(HISTORY_PATH, keep);
+  }
+}
+
 export async function appendHistory(entry: Omit<HistoryEntry, 'ts'>): Promise<void> {
   await ensureDir();
-  
-  const file = Bun.file(HISTORY_PATH);
-  const exists = await file.exists();
-  
-  if (exists) {
-    const text = await file.text();
-    const lines = text.trim().split('\n').filter(l => l.length > 0);
-    if (lines.length >= MAX_ENTRIES) {
-      const keep = lines.slice(-MAX_ENTRIES + 1).join('\n') + '\n';
-      await Bun.write(HISTORY_PATH, keep);
-    }
+
+  if (appendCount % 10 === 0) {
+    await maybeRotateHistory();
   }
-  
+  appendCount++;
+
   const record: HistoryEntry = {
     ts: Date.now(),
     q: entry.q,
@@ -45,15 +54,9 @@ export async function appendHistory(entry: Omit<HistoryEntry, 'ts'>): Promise<vo
     a: entry.a.slice(0, MAX_ANSWER_LENGTH),
     ...(entry.citations?.length ? { citations: entry.citations } : {}),
   };
-  
+
   const line = JSON.stringify(record) + '\n';
-  
-  if (exists) {
-    const current = await Bun.file(HISTORY_PATH).text();
-    await Bun.write(HISTORY_PATH, current + line);
-  } else {
-    await Bun.write(HISTORY_PATH, line);
-  }
+  await appendFile(HISTORY_PATH, line);
 }
 
 export async function readHistory(limit = 20): Promise<HistoryEntry[]> {
