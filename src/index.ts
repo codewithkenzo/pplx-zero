@@ -6,6 +6,7 @@ import { getEnv } from './env';
 import { fmt, write, writeLn } from './output';
 import { appendHistory, readHistory, getLastEntry } from './history';
 import { renderMarkdown, createMarkdownState } from './markdown';
+import { search as ragSearch, ingestDirectory, getDocCount, getKnowledgeDir } from './rag';
 
 getEnv();
 
@@ -20,6 +21,8 @@ const { values, positionals } = parseArgs({
     history: { type: 'boolean', default: false },
     'no-history': { type: 'boolean', default: false },
     continue: { type: 'boolean', short: 'c', default: false },
+    local: { type: 'boolean', short: 'l', default: false },
+    ingest: { type: 'boolean', default: false },
     output: { type: 'string', short: 'o' },
     raw: { type: 'boolean', default: false },
   },
@@ -39,6 +42,8 @@ Options:
   -i, --image <path>   Attach an image (PNG, JPG, etc.)
   -o, --output <path>  Save output to file (.md, .txt)
   -c, --continue       Continue from last query (add context)
+  -l, --local          Search local knowledge base first
+  --ingest             Index files from ~/.pplx/knowledge/
   --history            Show query history
   --no-history         Don't save this query to history
   --raw                Raw output (no markdown rendering)
@@ -51,6 +56,8 @@ Examples:
   pplx -f report.pdf "summarize this document"
   pplx -c "tell me more about that"
   pplx --history | grep "bun"
+  pplx --ingest
+  pplx -l "my notes on rust"
 `);
   process.exit(0);
 }
@@ -64,6 +71,40 @@ if (values.history) {
       console.log(fmt.historyEntry(entry.ts, entry.m, entry.q));
     }
   }
+  process.exit(0);
+}
+
+if (values.ingest) {
+  console.log(`Indexing files from ${getKnowledgeDir()}...`);
+  const stats = await ingestDirectory();
+  console.log(`Done! Added: ${stats.added}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`);
+  console.log(`Total documents: ${getDocCount()}`);
+  process.exit(0);
+}
+
+if (values.local) {
+  const query = positionals.join(' ');
+  if (!query) {
+    console.error(fmt.error('No query provided for local search.'));
+    process.exit(2);
+  }
+  
+  const results = ragSearch(query);
+  
+  if (results.length === 0) {
+    console.log('No local documents match. Try --ingest first or check ~/.pplx/knowledge/');
+    process.exit(0);
+  }
+  
+  console.log(`\n${fmt.model('local')} Found ${results.length} result(s):\n`);
+  
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
+    console.log(`[${i + 1}] ${r.title}`);
+    console.log(`    ${r.path}`);
+    console.log(`    ${r.snippet}\n`);
+  }
+  
   process.exit(0);
 }
 
