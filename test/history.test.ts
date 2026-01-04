@@ -82,3 +82,21 @@ test('appendHistory truncates long answers', async () => {
   const entries = await readHistory();
   expect(entries[0]!.a.length).toBe(2000);
 });
+
+test('appendHistory performance at scale (100 entries)', async () => {
+  const start = Date.now();
+  
+  for (let i = 0; i < 100; i++) {
+    await appendHistory({ q: `query ${i}`, m: 'sonar', a: `answer ${i}` });
+  }
+  
+  const elapsed = Date.now() - start;
+  
+  // Should complete in under 2 seconds (O(1) append is fast)
+  expect(elapsed).toBeLessThan(2000);
+  
+  // Verify all entries exist
+  const entries = await readHistory(100);
+  expect(entries.length).toBe(100);
+  expect(entries[0]!.q).toBe('query 99');
+});
