@@ -46,3 +46,4 @@ assets/
 docs/dev/
 secrets.env
 session-*.md
+twitter-thread.md
