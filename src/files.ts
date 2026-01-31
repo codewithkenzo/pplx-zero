@@ -26,11 +26,11 @@ export async function encodeFile(path: string): Promise<FileAttachment> {
   if (path.includes('..')) {
     throw new Error('Path traversal not allowed');
   }
-  
+
   const resolved = resolve(path);
   const ext = extname(resolved).toLowerCase();
   const mimeType = MIME_TYPES[ext];
-  
+
   if (!mimeType) {
     throw new Error(`Unsupported file type: ${ext}`);
   }

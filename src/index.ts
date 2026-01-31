@@ -76,7 +76,7 @@ if (values.history) {
 
 if (values.ingest) {
   const target = positionals[0];
-  
+
   try {
     if (target) {
       const stats = await ingestPath(target);
@@ -90,7 +90,7 @@ if (values.ingest) {
       const stats = await ingestDirectory();
       console.log(`Done! Added: ${stats.added}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`);
     }
-    
+
     console.log(`Total documents: ${getDocCount()}`);
   } catch (err) {
     console.error(fmt.error(err instanceof Error ? err.message : 'Ingest failed'));
@@ -107,16 +107,16 @@ if (values.local) {
     console.error(fmt.error('No query provided for local search.'));
     process.exit(2);
   }
-  
+
   const results = searchForRag(query);
-  
+
   if (results.length === 0) {
     console.log('No local documents match. Proceeding with Perplexity only...\n');
   } else {
     if (!values.json) {
       console.log(`${fmt.model('local')} Found ${results.length} relevant doc(s), using as context...\n`);
     }
-    
+
     ragContext = 'Context from user\'s knowledge base:\n---\n';
     for (const r of results) {
       ragContext += `[${r.title}]:\n${r.content}\n\n`;
@@ -223,7 +223,7 @@ await search(query, model, {
     if (values.output) {
       const ext = values.output.split('.').pop()?.toLowerCase();
       let content = '';
-      
+
       if (ext === 'md') {
         content = `# ${positionals.join(' ') || 'Query'}\n\n`;
         content += `**Model:** ${model}\n`;
@@ -244,7 +244,7 @@ await search(query, model, {
           });
         }
       }
-      
+
       await Bun.write(values.output, content);
       if (!values.json) {
         await writeLn(`\n${fmt.model('saved')} ${values.output}`);

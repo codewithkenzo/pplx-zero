@@ -62,10 +62,10 @@ export async function appendHistory(entry: Omit<HistoryEntry, 'ts'>): Promise<vo
 export async function readHistory(limit = 20): Promise<HistoryEntry[]> {
   const file = Bun.file(HISTORY_PATH);
   if (!(await file.exists())) return [];
-  
+
   const text = await file.text();
   const lines = text.trim().split('\n').filter(l => l.length > 0);
-  
+
   return lines
     .map(line => {
       try {

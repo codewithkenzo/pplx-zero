@@ -12,9 +12,9 @@ let db: Database | null = null;
 
 function getDb(): Database {
   if (db) return db;
-  
+
   db = new Database(DB_PATH);
-  
+
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(
       path,
@@ -23,7 +23,7 @@ function getDb(): Database {
       tokenize = 'porter unicode61'
     );
   `);
-  
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS docs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +32,7 @@ function getDb(): Database {
       ingested_at INTEGER DEFAULT (unixepoch())
     );
   `);
-  
+
   return db;
 }
 
@@ -56,61 +56,61 @@ export async function ensureKnowledgeDir(): Promise<void> {
 export async function ingestFile(filePath: string): Promise<'added' | 'updated' | 'skipped'> {
   const db = getDb();
   const content = await Bun.file(filePath).text();
-  
+
   if (!content.trim()) return 'skipped';
-  
+
   const title = filePath.split('/').pop()?.replace(/\.(md|txt)$/, '') || filePath;
-  
+
   const existing = db.query('SELECT id FROM docs WHERE path = ?').get(filePath) as { id: number } | null;
-  
+
   if (existing) {
     db.run('DELETE FROM docs_fts WHERE rowid = ?', [existing.id]);
     db.run('UPDATE docs SET title = ?, ingested_at = unixepoch() WHERE id = ?', [title, existing.id]);
-    db.run('INSERT INTO docs_fts (rowid, path, title, content) VALUES (?, ?, ?, ?)', 
+    db.run('INSERT INTO docs_fts (rowid, path, title, content) VALUES (?, ?, ?, ?)',
       [existing.id, filePath, title, content]);
     return 'updated';
   }
-  
+
   const result = db.run('INSERT INTO docs (path, title) VALUES (?, ?)', [filePath, title]);
   const docId = result.lastInsertRowid;
-  db.run('INSERT INTO docs_fts (rowid, path, title, content) VALUES (?, ?, ?, ?)', 
+  db.run('INSERT INTO docs_fts (rowid, path, title, content) VALUES (?, ?, ?, ?)',
     [docId, filePath, title, content]);
-  
+
   return 'added';
 }
 
 export async function ingestDirectory(dir?: string): Promise<IngestStats> {
   await ensureKnowledgeDir();
-  
+
   const targetDir = dir || KNOWLEDGE_DIR;
   const glob = new Glob('**/*.{md,txt}');
   const files: string[] = [];
-  
+
   for await (const file of glob.scan({ cwd: targetDir, absolute: true })) {
     files.push(file);
   }
-  
+
   const stats: IngestStats = { added: 0, updated: 0, skipped: 0 };
-  
+
   for (const file of files) {
     const result = await ingestFile(file);
     stats[result]++;
   }
-  
+
   return stats;
 }
 
 export function search(query: string, limit = 5): SearchResult[] {
   const db = getDb();
-  
+
   const ftsQuery = query
     .trim()
     .split(/\s+/)
     .map(word => `${word}*`)
     .join(' OR ');
-  
+
   const stmt = db.prepare(`
-    SELECT 
+    SELECT
       path,
       title,
       snippet(docs_fts, 2, '>', '<', '...', 40) as snippet,
@@ -120,7 +120,7 @@ export function search(query: string, limit = 5): SearchResult[] {
     ORDER BY score
     LIMIT ?
   `);
-  
+
   try {
     return stmt.all(ftsQuery, limit) as SearchResult[];
   } catch {
@@ -145,13 +145,13 @@ function truncateUtf8Safe(str: string, maxLen: number): string {
 
 export function searchForRag(query: string, limit = 3, maxChars = 4000): RagContext[] {
   const db = getDb();
-  
+
   const ftsQuery = query
     .trim()
     .split(/\s+/)
     .map(word => `${word}*`)
     .join(' OR ');
-  
+
   const stmt = db.prepare(`
     SELECT title, content
     FROM docs_fts
@@ -159,16 +159,16 @@ export function searchForRag(query: string, limit = 3, maxChars = 4000): RagCont
     ORDER BY bm25(docs_fts)
     LIMIT ?
   `);
-  
+
   try {
     const results = stmt.all(ftsQuery, limit) as { title: string; content: string }[];
     let totalChars = 0;
     const truncated: RagContext[] = [];
-    
+
     for (const r of results) {
       const remaining = maxChars - totalChars;
       if (remaining <= 0) break;
-      
+
       const content = truncateUtf8Safe(r.content, remaining);
       truncated.push({
         title: r.title,
@@ -176,7 +176,7 @@ export function searchForRag(query: string, limit = 3, maxChars = 4000): RagCont
       });
       totalChars += content.length;
     }
-    
+
     return truncated;
   } catch {
     return [];
@@ -213,9 +213,9 @@ export async function ingestPath(target: string): Promise<IngestStats> {
   await ensureKnowledgeDir();
   const stats: IngestStats = { added: 0, updated: 0, skipped: 0 };
   const resolved = resolve(target);
-  
+
   const isGlob = target.includes('*');
-  
+
   if (isGlob) {
     const glob = new Glob(target);
     for await (const file of glob.scan({ cwd: process.cwd(), absolute: true })) {
@@ -232,14 +232,14 @@ export async function ingestPath(target: string): Promise<IngestStats> {
     }
     return stats;
   }
-  
+
   let info;
   try {
     info = await stat(resolved);
   } catch {
     throw new Error(`Path not found: ${target}`);
   }
-  
+
   if (info.isDirectory()) {
     console.log(`Indexing directory: ${resolved}`);
     const glob = new Glob('**/*.{md,txt}');
@@ -251,7 +251,7 @@ export async function ingestPath(target: string): Promise<IngestStats> {
     }
     return stats;
   }
-  
+
   const ext = extname(resolved).toLowerCase();
   if (ext === '.pdf') {
     throw new Error('PDF indexing not supported (requires text extraction library). Use -f to send PDFs to Perplexity API instead.');
@@ -259,11 +259,11 @@ export async function ingestPath(target: string): Promise<IngestStats> {
   if (!SUPPORTED_EXTS.has(ext)) {
     throw new Error(`Unsupported file type: ${ext}. Supported: .md, .txt`);
   }
-  
+
   const dest = await copyToKnowledge(resolved);
   const result = await ingestFile(dest);
   stats[result]++;
   console.log(`${result}: ${basename(resolved)} → ~/.pplx/knowledge/`);
-  
+
   return stats;
 }
