@@ -35,3 +35,4 @@ ${c.dim}Get one at: https://www.perplexity.ai/settings/api${c.reset}
   _env = { PERPLEXITY_API_KEY: apiKey };
   return _env;
 }
+

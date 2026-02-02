@@ -100,3 +100,4 @@ test('appendHistory performance at scale (100 entries)', async () => {
   expect(entries.length).toBe(100);
   expect(entries[0]!.q).toBe('query 99');
 });
+

@@ -33,3 +33,4 @@ export async function write(text: string): Promise<void> {
 export async function writeLn(text: string): Promise<void> {
   await Bun.write(Bun.stdout, text + '\n');
 }
+

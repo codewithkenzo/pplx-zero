@@ -146,3 +146,4 @@ export async function search(
 
   callbacks.onDone(citations, usage);
 }
+

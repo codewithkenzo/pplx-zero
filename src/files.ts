@@ -56,3 +56,4 @@ export async function encodeFile(path: string): Promise<FileAttachment> {
 export function toDataUrl(attachment: FileAttachment): string {
   return `data:${attachment.mimeType};base64,${attachment.data}`;
 }
+

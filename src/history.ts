@@ -90,3 +90,4 @@ export async function clearHistory(): Promise<void> {
     await Bun.write(HISTORY_PATH, '');
   }
 }
+

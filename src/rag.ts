@@ -267,3 +267,4 @@ export async function ingestPath(target: string): Promise<IngestStats> {
 
   return stats;
 }
+

@@ -62,3 +62,4 @@ export function renderMarkdown(chunk: string, state: MarkdownState): string {
 
   return out;
 }
+

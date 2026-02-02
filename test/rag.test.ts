@@ -215,3 +215,4 @@ test('RAG context preserved when combined with continue context', () => {
   expect(finalQuery).toContain('Previous question');
   expect(finalQuery).toContain('follow-up question');
 });
+

@@ -269,3 +269,4 @@ await search(query, model, {
     process.exit(1);
   },
 }, file);
+
