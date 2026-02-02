@@ -32,7 +32,7 @@ Query [Perplexity AI](https://perplexity.ai) directly from your terminal. Respon
 - **🖼️ Images** — Describe screenshots and diagrams
 - **📝 Export** — Save research to markdown
 - **🎨 Pretty** — Rendered markdown by default
-- **🕐 History** — Browse and search past queries
+- **📜 History** — Browse and search past queries
 - **🧠 Local RAG** — Index your own notes with `--ingest`
 
 ## Install
