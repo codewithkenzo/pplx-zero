@@ -22,7 +22,7 @@ if (hasBun()) {
   });
   proc.on('exit', (code) => process.exit(code ?? 1));
 } else {
-  console.error('\x1b[31mError: pplx-zero requires Bun to be installed.\x1b[0m');
+  console.error('\x1b[31mError: this tool requires Bun to be installed.\x1b[0m');
   console.error('\nInstall Bun:');
   console.error('  curl -fsSL https://bun.sh/install | bash');
   console.error('\nOr via npm:');
