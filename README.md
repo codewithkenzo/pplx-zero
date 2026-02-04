@@ -49,7 +49,7 @@ yay -S pplx-zero            # arch linux
 export PERPLEXITY_API_KEY="pplx-..."   # or PERPLEXITY_AI_API_KEY
 ```
 
-Get your key at [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
+Get your key at [www.perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
 
 ## Usage
 
